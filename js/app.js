@@ -11,7 +11,9 @@ let rows = [];      // ads_metricas_diarias do projeto ativo (asc por data)
 let adRows = [];    // ads_anuncios_diarios do projeto ativo (asc por data)
 let projetos = [];  // nomes de todos os projetos
 let projeto = localStorage.getItem('ads_dash_projeto') || 'principal';
-let period = 0;     // 0 = tudo, 7, 30
+let period = 0;     // 0 = tudo, 1 = hoje, 7, 30, -1 = intervalo personalizado
+let range = { de: '', ate: '' };   // usado quando period === -1
+try { range = { ...range, ...JSON.parse(localStorage.getItem('ads_dash_range') || '{}') }; } catch (e) { /* usa default */ }
 let editingId = null;
 let editingAdId = null;
 let selectedAds = null;          // Set de anúncios no gráfico de comparação
@@ -94,6 +96,10 @@ function toast(msg, err) {
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function filterByPeriod(list) {
+  if (period === -1) {
+    /* intervalo aberto de um lado se só uma das datas estiver preenchida */
+    return list.filter(r => (!range.de || r.data >= range.de) && (!range.ate || r.data <= range.ate));
+  }
   if (!period) return list;
   const cut = new Date();
   cut.setDate(cut.getDate() - (period - 1));
@@ -481,7 +487,7 @@ function aggregateAds() {
 function renderRanking() {
   const tbl = $('tblRanking');
   const ags = aggregateAds();
-  $('rankPeriodo').textContent = period === 1 ? '· hoje' : period ? `· últimos ${period} dias` : '· todo o período';
+  $('rankPeriodo').textContent = '· ' + periodLabel();
   $('emptyRanking').classList.toggle('hidden', ags.length > 0);
   if (!ags.length) { tbl.innerHTML = ''; return; }
 
@@ -1129,7 +1135,7 @@ async function enterApp() {
 async function boot() {
   /* período salvo */
   const savedPeriod = parseInt(localStorage.getItem('ads_dash_period') || '0', 10);
-  if ([0, 1, 7, 30].includes(savedPeriod)) period = savedPeriod;
+  if ([-1, 0, 1, 7, 30].includes(savedPeriod)) period = savedPeriod;
   syncPeriodChips();
 
   /* forms */
@@ -1155,9 +1161,20 @@ async function boot() {
   document.querySelectorAll('#periodChips .chip, #periodChipsAds .chip').forEach(c => c.addEventListener('click', () => {
     period = parseInt(c.dataset.days, 10);
     localStorage.setItem('ads_dash_period', String(period));
+    /* na 1ª vez, sugere os últimos 7 dias em vez de abrir vazio */
+    if (period === -1 && !range.de && !range.ate) {
+      const d = new Date(); d.setDate(d.getDate() - 6);
+      range = { de: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, ate: todayISO() };
+      localStorage.setItem('ads_dash_range', JSON.stringify(range));
+    }
     syncPeriodChips();
     renderAll();
   }));
+
+  document.querySelectorAll('.rangebar').forEach(bar => {
+    bar.querySelector('.r_apply').addEventListener('click', () => aplicarRange(bar));
+    bar.querySelectorAll('input[type="date"]').forEach(i => i.addEventListener('change', () => aplicarRange(bar)));
+  });
 
   /* projetos */
   $('projSel').addEventListener('change', async () => {
@@ -1222,9 +1239,36 @@ async function boot() {
   else showLogin();
 }
 
+function periodLabel() {
+  if (period === -1) {
+    if (range.de && range.ate) return `${fmtData(range.de)} → ${fmtData(range.ate)}`;
+    if (range.de) return `a partir de ${fmtData(range.de)}`;
+    if (range.ate) return `até ${fmtData(range.ate)}`;
+    return 'todo o período';
+  }
+  if (period === 1) return 'hoje';
+  return period ? `últimos ${period} dias` : 'todo o período';
+}
+
 function syncPeriodChips() {
   document.querySelectorAll('#periodChips .chip, #periodChipsAds .chip').forEach(c =>
     c.classList.toggle('active', parseInt(c.dataset.days, 10) === period));
+  document.querySelectorAll('.rangebar').forEach(bar => {
+    bar.classList.toggle('hidden', period !== -1);
+    bar.querySelector('.r_de').value = range.de;
+    bar.querySelector('.r_ate').value = range.ate;
+    bar.querySelector('.rangeinfo').textContent = period === -1 ? periodLabel() : '';
+  });
+}
+
+function aplicarRange(bar) {
+  const de = bar.querySelector('.r_de').value;
+  const ate = bar.querySelector('.r_ate').value;
+  if (de && ate && de > ate) return toast('A data inicial é depois da final.', true);
+  range = { de, ate };
+  localStorage.setItem('ads_dash_range', JSON.stringify(range));
+  syncPeriodChips();
+  renderAll();
 }
 
 boot();
