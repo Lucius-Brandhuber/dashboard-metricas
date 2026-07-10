@@ -3896,7 +3896,11 @@ async function submeterAuth(e) {
       if (!codigo) throw new Error('Informe o código do convite.');
       if (senha.length < 6) throw new Error('A senha precisa de pelo menos 6 caracteres.');
 
-      const { data: sd, error: e1 } = await db.auth.signUp({ email, password: senha });
+      /* o link de confirmação tem que voltar PARA O APP, senão a pessoa cai
+         no Site URL do projeto (default localhost) e o resgate automático não
+         dispara. Precisa estar na allow-list de Redirect URLs do Supabase. */
+      const voltaAqui = location.origin + location.pathname;
+      const { data: sd, error: e1 } = await db.auth.signUp({ email, password: senha, options: { emailRedirectTo: voltaAqui } });
       if (e1) {
         if (/already registered|already exists/i.test(e1.message))
           throw new Error('Essa conta já existe. Toque em “Já tenho conta — entrar”. Se faltar resgatar o convite, o app pede na hora.');

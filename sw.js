@@ -3,14 +3,14 @@
    - HTML/JS/CSS do app: NETWORK-FIRST (deploy novo aparece na hora; cache é só o fallback offline).
    - CDN (Chart.js, supabase-js): cache-first, são imutáveis por versão.
    - Nada de API do Supabase passa por aqui: dado nunca vem de cache. */
-const VERSAO = 'ergosphere-v7';
+const VERSAO = 'ergosphere-v8';
 /* os ?v= têm que bater com os do index.html, senão o fallback offline
    guarda uma URL que a página nunca pede */
 const SHELL = [
   './',
   './index.html',
-  './css/style.css?v=6',
-  './js/app.js?v=6',
+  './css/style.css?v=7',
+  './js/app.js?v=7',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',
