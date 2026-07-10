@@ -20,7 +20,7 @@
 <!-- ?v= é obrigatório: o GitHub Pages serve tudo com max-age=600 e o navegador
      reusa subrecurso sem revalidar. Sem isto, um index.html novo pode carregar
      um app.js velho — e o app.js velho morre procurando elementos que sumiram. -->
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=5">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
 </head>
@@ -382,33 +382,6 @@
         <p class="chartfoot" id="arvoreFoot"></p>
       </div>
 
-      <div class="plate" id="anaCard">
-        <div class="cardhead">
-          <h3>Análise do anúncio <span class="sub">· histórico completo, dia a dia</span></h3>
-          <select id="anaAd" class="select" aria-label="Anúncio analisado"></select>
-        </div>
-        <p class="anacrumb" id="anaCaminho"></p>
-
-        <div id="anaEmpty" class="hidden"></div>
-
-        <div id="anaBody" class="hidden">
-          <div class="kpis anakpis" id="anaKpis"></div>
-          <div id="anaDiag"></div>
-
-          <div class="smallmults">
-            <div class="mult"><h4>Lucro acumulado</h4><div class="chartbox mini"><canvas id="anaLucro"></canvas></div></div>
-            <div class="mult"><h4>Gasto vs Faturado</h4><div class="chartbox mini"><canvas id="anaGasto"></canvas></div></div>
-            <div class="mult"><h4>CPC</h4><div class="chartbox mini"><canvas id="anaCpc"></canvas></div></div>
-            <div class="mult"><h4>Hook Rate</h4><div class="chartbox mini"><canvas id="anaHook"></canvas></div></div>
-            <div class="mult"><h4>Frequência</h4><div class="chartbox mini"><canvas id="anaFreq"></canvas></div></div>
-          </div>
-
-          <h4 class="anasub">Linha do tempo</h4>
-          <p class="formhint" style="margin:0 0 10px">Cada linha compara o dia com o dia anterior desse mesmo anúncio.</p>
-          <div class="tablewrap"><table id="tblAna"></table></div>
-        </div>
-      </div>
-
       <div class="plate chartcard">
         <div class="cardhead">
           <h3>Comparação entre anúncios</h3>
@@ -538,6 +511,120 @@
   <button class="fab" id="fabLancar" aria-label="Lançar dia">＋</button>
 </div>
 
+<!-- ===== Gaveta de detalhe do anúncio =====
+     Selecionar um criativo na árvore abre isto: histórico dia a dia,
+     adicionar novos dias sem redigitar a hierarquia, e mover/atribuir
+     campanha, conjunto e nome — tudo sem sair do contexto do anúncio. -->
+<div id="adDrawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="adName">
+  <div class="drawerscrim" data-close></div>
+  <div class="drawersheet">
+
+    <div class="drawertop">
+      <span class="drawergrab" aria-hidden="true"></span>
+      <div class="drawernav">
+        <button class="rowbtn" id="adPrev" title="Anúncio anterior" aria-label="Anúncio anterior">↑</button>
+        <button class="rowbtn" id="adNext" title="Próximo anúncio" aria-label="Próximo anúncio">↓</button>
+        <select id="adSelect" class="select" aria-label="Selecionar anúncio"></select>
+      </div>
+      <button class="drawerx" data-close aria-label="Fechar">✕</button>
+    </div>
+
+    <div class="drawerscroll">
+      <header class="adhead">
+        <span class="addot" id="adDot"></span>
+        <div class="adident">
+          <p class="adpath" id="adPath"></p>
+          <h2 id="adName">—</h2>
+          <div class="adtags" id="adTags"></div>
+        </div>
+      </header>
+
+      <div class="adactions">
+        <button class="btn primary small" id="adAddDay">＋ Adicionar dia</button>
+        <button class="btn ghost small" id="adAssign">⇄ Atribuir / mover</button>
+        <button class="btn ghost small" id="adDup" title="Duplicar este criativo em outro conjunto">⧉ Duplicar</button>
+        <button class="btn danger small" id="adDelete">🗑 Excluir</button>
+      </div>
+
+      <!-- form rápido: adicionar um dia a ESTE anúncio -->
+      <form id="adDayForm" class="drawerform hidden">
+        <h4 class="drawersec">Adicionar um dia</h4>
+        <p class="drawerhint" id="adDayHint">A campanha, o conjunto e o nome já vêm deste criativo — preencha só os números do dia.</p>
+        <div class="fgrid">
+          <label>Data
+            <input type="date" id="dd_data" required>
+            <span class="datachips">
+              <button type="button" class="chip" data-setdata="ontem" data-alvo="dd_data">Ontem</button>
+              <button type="button" class="chip" data-setdata="hoje" data-alvo="dd_data">Hoje</button>
+            </span>
+          </label>
+          <label>Status<select id="dd_status"><option value="ativo">Ativo</option><option value="pausado">Pausado</option></select></label>
+          <label>Gasto (R$)<input type="text" id="dd_gasto" inputmode="decimal" placeholder="0,00"></label>
+          <label>Faturado (R$)<input type="text" id="dd_faturado" inputmode="decimal" placeholder="0,00"></label>
+          <label>Compras<input type="text" id="dd_compras" inputmode="numeric" placeholder="0"></label>
+          <label>Cliques<input type="text" id="dd_cliques" inputmode="numeric" placeholder="0"></label>
+          <label>CPM (R$)<input type="text" id="dd_cpm" inputmode="decimal" placeholder="0,00"></label>
+        </div>
+        <details class="fgroup">
+          <summary>Criativo e overrides</summary>
+          <div class="fgrid">
+            <label>CTR (%)<input type="text" id="dd_ctr" inputmode="decimal" placeholder="0,00"></label>
+            <label>Hook Rate 3s (%)<input type="text" id="dd_hook" inputmode="decimal" placeholder="0,00"></label>
+            <label>Retenção de vídeo (%)<input type="text" id="dd_retencao" inputmode="decimal" placeholder="0,00"></label>
+            <label>Frequência<input type="text" id="dd_frequencia" inputmode="decimal" placeholder="0,00"></label>
+            <label>CPC (R$)<input type="text" id="dd_cpc" inputmode="decimal" placeholder="auto"></label>
+            <label>Custo por compra (R$)<input type="text" id="dd_cpa" inputmode="decimal" placeholder="auto"></label>
+            <label>ROAS<input type="text" id="dd_roi" inputmode="decimal" placeholder="auto"></label>
+          </div>
+        </details>
+        <div class="fgrid">
+          <label class="wide">Observações <span class="fgrouphint">vira anotação no Diário</span><input type="text" id="dd_obs" placeholder="opcional"></label>
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn primary" id="adDaySave">Salvar dia</button>
+          <button type="button" class="btn ghost" data-cancelform="adDayForm">Cancelar</button>
+        </div>
+      </form>
+
+      <!-- form: atribuir / mover o criativo inteiro -->
+      <form id="adAssignForm" class="drawerform hidden">
+        <h4 class="drawersec" id="adAssignTitle">Atribuir campanha e conjunto</h4>
+        <p class="drawerhint" id="adAssignHint"></p>
+        <div class="fgrid">
+          <label>Campanha<input type="text" id="mv_campanha" list="campNames" placeholder="Sem campanha"></label>
+          <label>Conjunto de anúncios<input type="text" id="mv_conjunto" list="conjNames" placeholder="Sem conjunto"></label>
+          <label class="wide">Nome do anúncio<input type="text" id="mv_anuncio" placeholder="nome do criativo" required></label>
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn primary" id="adAssignSave">Aplicar</button>
+          <button type="button" class="btn ghost" data-cancelform="adAssignForm">Cancelar</button>
+        </div>
+      </form>
+
+      <div id="adEmpty" class="hidden"></div>
+
+      <div id="adBody">
+        <div class="kpis anakpis" id="dKpis"></div>
+        <div id="dDiag"></div>
+
+        <div class="smallmults">
+          <div class="mult"><h4>Lucro acumulado</h4><div class="chartbox mini"><canvas id="dLucro"></canvas></div></div>
+          <div class="mult"><h4>Gasto vs Faturado</h4><div class="chartbox mini"><canvas id="dGasto"></canvas></div></div>
+          <div class="mult"><h4>CPC</h4><div class="chartbox mini"><canvas id="dCpc"></canvas></div></div>
+          <div class="mult"><h4>Hook Rate</h4><div class="chartbox mini"><canvas id="dHook"></canvas></div></div>
+          <div class="mult"><h4>Frequência</h4><div class="chartbox mini"><canvas id="dFreq"></canvas></div></div>
+        </div>
+
+        <div class="drawersechead">
+          <h4 class="anasub">Linha do tempo</h4>
+          <span class="drawerhint">cada linha compara com o dia anterior deste anúncio</span>
+        </div>
+        <div class="tablewrap"><table id="tblD"></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Onboarding ===== -->
 <div id="onboard" class="onboard hidden"></div>
 
@@ -546,6 +633,6 @@
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
-<script src="js/app.js?v=4"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>

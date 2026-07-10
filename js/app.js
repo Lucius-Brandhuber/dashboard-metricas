@@ -19,6 +19,7 @@ let range = { de: '', ate: '' };
 try { range = { ...range, ...JSON.parse(localStorage.getItem('ads_dash_range') || '{}') }; } catch (e) { /* usa default */ }
 let editingId = null;
 let editingAdId = null;
+let adAberto = null;             // adKey aberto na gaveta de detalhe (null = fechada)
 let expandedDia = null;          // data ISO do dia expandido na tabela
 let selectedAds = null;          // Set de CHAVES de anúncio no gráfico de comparação
 let sortGeral = { key: 'data', dir: -1 };
@@ -1357,13 +1358,6 @@ function ajustarDiabox() {
   box.style.width = wrap.clientWidth + 'px';
 }
 
-function irParaAnalise(key) {
-  trocarAba('anuncios');
-  $('anaAd').value = key;
-  renderAnalise();
-  $('anaCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
 /* ---- form Visão Geral ---- */
 function startEditGeral(id) {
   const r = rows.find(x => x.id === id);
@@ -1738,7 +1732,7 @@ function renderArvore() {
         const d = diagDe.get(k);
         const cls = d.vClass;
         const status = [...dias].sort((a, b) => a.data.localeCompare(b.data)).slice(-1)[0].status;
-        linhas.push(`<div class="treerow lvl3" data-ad="${esc(k)}">
+        linhas.push(`<div class="treerow lvl3" data-openad="${esc(k)}" role="button" tabindex="0" aria-label="Abrir ${esc(adParts(k).anuncio)}">
           <span class="tdot" style="background:${colors[k]}"></span>
           <span class="tnome">
             <b>${esc(adParts(k).anuncio)}</b>
@@ -1747,8 +1741,8 @@ function renderArvore() {
           <span class="tchips"><span class="verdict ${cls}">${d.verdict}</span></span>
           <span class="tnums">${numsArvore(ta)}</span>
           <span class="tacoes">
-            <button class="rowbtn txt" data-ana="${esc(k)}">Analisar →</button>
             <button class="rowbtn del" data-delad="${esc(k)}" title="Excluir este anúncio e todos os dias dele">🗑</button>
+            <span class="tgo" aria-hidden="true">›</span>
           </span>
         </div>`);
       }
@@ -1767,8 +1761,11 @@ function renderArvore() {
     el.addEventListener('click', e => { if (!e.target.closest('button')) alterna(el); });
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alterna(el); } });
   });
-  host.querySelectorAll('[data-ana]').forEach(b => b.addEventListener('click', () => irParaAnalise(b.dataset.ana)));
-  host.querySelectorAll('[data-delad]').forEach(b => b.addEventListener('click', () => excluirAnuncio(b.dataset.delad)));
+  host.querySelectorAll('.treerow[data-openad]').forEach(el => {
+    el.addEventListener('click', e => { if (!e.target.closest('button')) abrirAd(el.dataset.openad); });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirAd(el.dataset.openad); } });
+  });
+  host.querySelectorAll('[data-delad]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); excluirAnuncio(b.dataset.delad); }));
 
   const semHierarquia = list.every(r => !r.campanha && !r.conjunto);
   $('arvoreFoot').innerHTML = semHierarquia
@@ -1880,7 +1877,7 @@ function renderAnaKpis(d, days) {
     ? (be != null ? 'breakeven: ' + fmtDec(be) : '—')
     : `<span class="${be != null && d.roasRecente >= be ? 'up' : 'down'}">recente: ${fmtDec(d.roasRecente)}</span>`;
 
-  $('anaKpis').innerHTML = [
+  $('dKpis').innerHTML = [
     { l: 'Lucro', v: fmtBRL(d.lucro), cls: d.lucro >= 0 ? 'good' : 'bad', sub: temEconomia() ? `líquido de ${nf2.format(dedPct())}%` : 'estimado (bruto)' },
     { l: 'Gasto total', v: fmtBRL(d.gasto), sub: `em ${days.length} ${days.length === 1 ? 'dia' : 'dias'}` },
     { l: 'ROAS acumulado', v: d.roas == null ? '—' : fmtDec(d.roas), cls: d.roas == null || be == null ? '' : (d.roas >= be ? 'good' : 'bad'), sub: roasSub },
@@ -1894,8 +1891,8 @@ function renderAnaKpis(d, days) {
 }
 
 function renderAnaDiag(d) {
-  $('anaDiag').className = 'diag ' + d.vClass;
-  $('anaDiag').innerHTML = `
+  $('dDiag').className = 'diag ' + d.vClass;
+  $('dDiag').innerHTML = `
     <div class="diaghead">
       <span class="verdict ${d.vClass}">${d.verdict}</span>
       <span class="vsum">${d.vSum}</span>
@@ -1921,7 +1918,7 @@ function renderAnaCharts(days) {
 
   let acc = 0;
   const lucroAcum = days.map(r => { const v = adLucroOf(r); if (v == null) return null; acc += v; return acc; });
-  makeChart('anaLucro', {
+  makeChart('dLucro', {
     type: 'line',
     data: { labels, datasets: [lineDataset('Lucro acumulado', lucroAcum, SERIES[0], true, false)] },
     options: miniOptions(days, money, { plugins: { refline: { y: 0, color: C.zero, dash: false } }, y: { beginAtZero: false } }),
@@ -1929,7 +1926,7 @@ function renderAnaCharts(days) {
 
   const gastoOpts = miniOptions(days, money);
   gastoOpts.plugins.legend = { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, color: C.text2, font: { size: 10 } } };
-  makeChart('anaGasto', {
+  makeChart('dGasto', {
     type: 'bar',
     data: {
       labels,
@@ -1941,9 +1938,9 @@ function renderAnaCharts(days) {
     options: gastoOpts,
   });
 
-  makeChart('anaCpc', { type: 'line', data: { labels, datasets: [lineDataset('CPC', days.map(cpcOf), SERIES[0], true, false)] }, options: miniOptions(days, money2) });
-  makeChart('anaHook', { type: 'line', data: { labels, datasets: [lineDataset('Hook Rate', days.map(r => r.hook_rate), SERIES[0], true, false)] }, options: miniOptions(days, pct) });
-  makeChart('anaFreq', { type: 'line', data: { labels, datasets: [lineDataset('Frequência', days.map(r => r.frequencia), SERIES[0], true, false)] }, options: miniOptions(days, v => fmtDec(v)) });
+  makeChart('dCpc', { type: 'line', data: { labels, datasets: [lineDataset('CPC', days.map(cpcOf), SERIES[0], true, false)] }, options: miniOptions(days, money2) });
+  makeChart('dHook', { type: 'line', data: { labels, datasets: [lineDataset('Hook Rate', days.map(r => r.hook_rate), SERIES[0], true, false)] }, options: miniOptions(days, pct) });
+  makeChart('dFreq', { type: 'line', data: { labels, datasets: [lineDataset('Frequência', days.map(r => r.frequencia), SERIES[0], true, false)] }, options: miniOptions(days, v => fmtDec(v)) });
 }
 
 function deltaTag(cur, prev, upGood) {
@@ -1960,7 +1957,7 @@ function cellWithDelta(fmtVal, cur, prev, upGood, extraCls) {
 }
 
 function renderAnaTable(days) {
-  const tbl = $('tblAna');
+  const tbl = $('tblD');
   const be = breakevenRoas();
   const head = ['Dia', 'Data', 'Gasto', 'Faturado', 'Lucro', 'ROAS', 'Compras', 'Custo/Compra', 'CPC', 'CTR', 'Hook', 'Freq.', 'Status', 'Obs'];
   tbl.innerHTML = '<thead><tr>' + head.map(h => `<th style="cursor:default">${h}</th>`).join('') + '</tr></thead><tbody>' +
@@ -1990,36 +1987,215 @@ function renderAnaTable(days) {
     }).join('') + '</tbody>';
 }
 
-function renderAnalise() {
+/* =================================================================
+   GAVETA DE DETALHE DO ANÚNCIO
+   Tocar um criativo na árvore abre isto por cima de qualquer aba:
+   histórico dia a dia, adicionar novos dias sem redigitar a hierarquia,
+   e mover/atribuir campanha, conjunto e nome. renderAll a mantém viva.
+================================================================= */
+function abrirAd(key) {
   const keys = adKeys();
-  const sel = $('anaAd');
-  const cur = sel.value && keys.includes(sel.value) ? sel.value : keys[0];
-  sel.innerHTML = keys.map(k => `<option value="${esc(k)}"${k === cur ? ' selected' : ''}>${esc(adRotuloUnico(k))}</option>`).join('');
+  if (!keys.length) return;
+  adAberto = keys.includes(key) ? key : keys[0];
+  const dr = $('adDrawer');
+  dr.classList.remove('hidden');
+  document.body.classList.add('sem-scroll');
+  /* o slide precisa de um quadro entre display e .aberta. Mas rAF não roda em
+     aba oculta (mesma armadilha do count-up) — sem animação, mostra direto,
+     senão a gaveta ficaria presa em opacity:0. */
+  if (podeAnimar()) requestAnimationFrame(() => dr.classList.add('aberta'));
+  else dr.classList.add('aberta');
+  navigator.vibrate?.(6);
+  ocultarFormsDrawer();
+  renderAdDrawer();
+  dr.querySelector('.drawerscroll').scrollTop = 0;
+}
+function fecharAd() {
+  adAberto = null;
+  $('adDrawer').classList.remove('aberta');
+  document.body.classList.remove('sem-scroll');
+  const esconde = () => $('adDrawer').classList.add('hidden');
+  if (podeAnimar()) setTimeout(esconde, 200); else esconde();
+}
+function ocultarFormsDrawer() {
+  $('adDayForm').classList.add('hidden');
+  $('adAssignForm').classList.add('hidden');
+}
+/** pula para o próximo/anterior criativo sem fechar a gaveta */
+function pularAd(passo) {
+  const keys = adKeys();
+  const i = keys.indexOf(adAberto);
+  if (i < 0) return;
+  adAberto = keys[(i + passo + keys.length) % keys.length];
+  ocultarFormsDrawer();
+  renderAdDrawer();
+  $('adDrawer').querySelector('.drawerscroll').scrollTop = 0;
+}
 
-  const has = keys.length > 0;
-  $('anaEmpty').classList.toggle('hidden', has);
-  $('anaBody').classList.toggle('hidden', !has);
-  $('anaAd').classList.toggle('hidden', !has);
-  if (!has) {
-    $('anaCaminho').textContent = '';
-    $('anaEmpty').innerHTML = noSignal('Sem sinal',
-      'Lance criativos para ver a evolução de cada um, dia a dia, com veredito automático.',
-      { acao: 'lancar-anuncio', txt: 'Lançar anúncio' });
-    ligarAcoes($('anaEmpty'));
-    return;
-  }
+/** alias histórico: ⌘K, tela Hoje e a expansão de dia da Geral chamam por aqui */
+function irParaAnalise(key) { abrirAd(key); }
 
+function renderAdDrawer() {
+  if (!adAberto) return;                        // gaveta fechada: nada a desenhar
+  const keys = adKeys();
+  /* adKeys() vê TODAS as linhas (não filtra período): a única forma de o
+     anúncio sumir daqui é exclusão. Ao mover, adAberto já vira a nova chave
+     antes do reload. Então "sumiu" = foi excluído → fecha. */
+  if (!keys.includes(adAberto)) { fecharAd(); return; }
+  const cur = adAberto;
+  const p = adParts(cur);
   const caminho = adCaminho(cur);
-  $('anaCaminho').innerHTML = caminho
-    ? `<span class="crumb">${esc(caminho)}</span> <span class="crumbsep">›</span> <b>${esc(adParts(cur).anuncio)}</b>`
-    : `<span class="crumb">${SEM_CAMP} › ${SEM_CONJ}</span> <span class="crumbsep">›</span> <b>${esc(adParts(cur).anuncio)}</b>`;
+
+  /* seletor + navegação no topo */
+  $('adSelect').innerHTML = keys.map(k => `<option value="${esc(k)}"${k === cur ? ' selected' : ''}>${esc(adRotuloUnico(k))}</option>`).join('');
+  const soUm = keys.length < 2;
+  $('adPrev').disabled = soUm; $('adNext').disabled = soUm;
+
+  /* cabeçalho: cor da série, caminho, nome, etiquetas */
+  $('adDot').style.background = adColorMap()[cur] || C.gold;
+  $('adPath').innerHTML = caminho ? `<span class="crumb">${esc(caminho)}</span>` : `<span class="crumb dim">${SEM_CAMP} › ${SEM_CONJ}</span>`;
+  $('adName').textContent = p.anuncio;
 
   const days = adRows.filter(r => adKey(r) === cur).sort((a, b) => a.data.localeCompare(b.data));
+  const status = days[days.length - 1].status;
+  const nHomon = keys.filter(x => adParts(x).anuncio === p.anuncio).length;
+  $('adTags').innerHTML =
+    `<span class="badge ${status}">${status}</span>` +
+    `<span class="adtag">${days.length} ${days.length === 1 ? 'dia' : 'dias'}</span>` +
+    (nHomon > 1 ? `<span class="adtag warn">mesmo nome em ${nHomon} conjuntos</span>` : '');
+
+  /* dica do form de adicionar dia, já com o contexto deste criativo */
+  $('adDayHint').innerHTML = `A campanha, o conjunto e o nome já vêm de <b>${esc(p.anuncio)}</b>${caminho ? ` · ${esc(caminho)}` : ''} — preencha só os números do dia.`;
+
   const d = diagnose(days);
   renderAnaKpis(d, days);
   renderAnaDiag(d);
   renderAnaCharts(days);
   renderAnaTable(days);
+}
+
+/* ---- adicionar um dia a ESTE anúncio (herda a hierarquia) ---- */
+function abrirAddDia() {
+  if (!adAberto) return;
+  $('adAssignForm').classList.add('hidden');
+  const f = $('adDayForm');
+  f.reset();
+  $('dd_data').value = todayISO();
+  f.classList.remove('hidden');
+  atualizarPreviewDia();
+  f.scrollIntoView({ behavior: podeAnimar() ? 'smooth' : 'auto', block: 'start' });
+  setTimeout(() => $('dd_gasto').focus(), 120);
+}
+function atualizarPreviewDia() {
+  const gasto = parseNum($('dd_gasto').value), fat = parseNum($('dd_faturado').value);
+  const comp = parseNum($('dd_compras').value), cliq = parseNum($('dd_cliques').value);
+  $('dd_roi').placeholder = (gasto > 0 && fat != null) ? 'auto: ' + nf2.format(fat / gasto) : 'auto';
+  $('dd_cpa').placeholder = (comp > 0 && gasto != null) ? 'auto: ' + nf2.format(gasto / comp) : 'auto';
+  $('dd_cpc').placeholder = (cliq > 0 && gasto != null) ? 'auto: ' + nf2.format(gasto / cliq) : 'auto';
+}
+async function salvarDiaDoAnuncio(e) {
+  e.preventDefault();
+  if (!adAberto) return;
+  const p = adParts(adAberto);
+  const data = $('dd_data').value;
+  if (!data) return toast('Escolha a data.', true);
+  const rec = {
+    data, anuncio: p.anuncio, campanha: p.campanha, conjunto: p.conjunto,
+    status: $('dd_status').value, projeto, user_id: uid,
+    gasto: parseNum($('dd_gasto').value), cpm: parseNum($('dd_cpm').value), cpc: parseNum($('dd_cpc').value),
+    cliques: parseInt0($('dd_cliques').value), ctr: parseNum($('dd_ctr').value),
+    compras: parseInt0($('dd_compras').value), custo_por_compra: parseNum($('dd_cpa').value),
+    faturado: parseNum($('dd_faturado').value), roi: parseNum($('dd_roi').value),
+    hook_rate: parseNum($('dd_hook').value), retencao_video: parseNum($('dd_retencao').value),
+    frequencia: parseNum($('dd_frequencia').value), observacoes: $('dd_obs').value.trim() || null,
+  };
+  const dup = adRows.find(r => r.data === data && adKey(r) === adAberto);
+  if (dup && !await confirmar({ titulo: 'Sobrescrever o dia?', texto: `"${p.anuncio}" já tem lançamento em ${fmtData(data)}.`, ok: 'Sobrescrever' })) return;
+  botaoOcupado('adDaySave', true);
+  const { error } = await db.from('ads_anuncios_diarios').upsert(rec, { onConflict: 'user_id,data,projeto,campanha,conjunto,anuncio' });
+  botaoOcupado('adDaySave', false);
+  if (error) return toast('Erro ao salvar: ' + (error.message || error), true);
+  ocultarFormsDrawer();
+  toast(dup ? 'Dia atualizado ✓' : 'Dia adicionado ✓');
+  await loadData();
+}
+
+/* ---- atribuir / mover: muda campanha, conjunto e nome de TODOS os dias ---- */
+function abrirAtribuir() {
+  if (!adAberto) return;
+  $('adDayForm').classList.add('hidden');
+  const p = adParts(adAberto);
+  const dias = adRows.filter(r => adKey(r) === adAberto).length;
+  $('mv_campanha').value = p.campanha;
+  $('mv_conjunto').value = p.conjunto;
+  $('mv_anuncio').value = p.anuncio;
+  $('adAssignForm').dataset.modo = 'mover';
+  $('adAssignTitle').textContent = 'Atribuir campanha e conjunto';
+  $('adAssignSave').textContent = 'Aplicar a todos os dias';
+  $('adAssignHint').innerHTML = `Muda a posição de <b>${dias} ${dias === 1 ? 'dia' : 'dias'}</b> deste criativo de uma vez. Deixe campanha ou conjunto em branco para <i>Sem campanha / Sem conjunto</i>.`;
+  const f = $('adAssignForm');
+  f.classList.remove('hidden');
+  f.scrollIntoView({ behavior: podeAnimar() ? 'smooth' : 'auto', block: 'start' });
+  setTimeout(() => $('mv_campanha').focus(), 120);
+}
+/** duplica o criativo inteiro em outra campanha/conjunto (copia todos os dias) */
+function abrirDuplicar() {
+  if (!adAberto) return;
+  $('adDayForm').classList.add('hidden');
+  const p = adParts(adAberto);
+  const dias = adRows.filter(r => adKey(r) === adAberto).length;
+  $('mv_campanha').value = p.campanha;
+  $('mv_conjunto').value = p.conjunto;
+  $('mv_anuncio').value = p.anuncio;
+  $('adAssignForm').dataset.modo = 'duplicar';
+  $('adAssignTitle').textContent = 'Duplicar o criativo';
+  $('adAssignSave').textContent = 'Duplicar aqui';
+  $('adAssignHint').innerHTML = `Cria uma cópia com os mesmos <b>${dias} ${dias === 1 ? 'dia' : 'dias'}</b> numa nova campanha/conjunto. O original continua onde está — mude ao menos um campo.`;
+  const f = $('adAssignForm');
+  f.classList.remove('hidden');
+  f.scrollIntoView({ behavior: podeAnimar() ? 'smooth' : 'auto', block: 'start' });
+  setTimeout(() => $('mv_conjunto').focus(), 120);
+}
+async function salvarAtribuir(e) {
+  e.preventDefault();
+  if (!adAberto) return;
+  const dupMode = $('adAssignForm').dataset.modo === 'duplicar';
+  const novo = { campanha: $('mv_campanha').value.trim(), conjunto: $('mv_conjunto').value.trim(), anuncio: $('mv_anuncio').value.trim() };
+  if (!novo.anuncio) return toast('O anúncio precisa de um nome.', true);
+  const novaKey = [novo.campanha, novo.conjunto, novo.anuncio].join(SEP);
+  const meus = adRows.filter(r => adKey(r) === adAberto);
+  if (novaKey === adAberto) {
+    if (dupMode) return toast('Mude a campanha, o conjunto ou o nome para duplicar.', true);
+    ocultarFormsDrawer(); return;   // mover para o mesmo lugar: no-op
+  }
+  /* colisão: já existe OUTRO criativo naquela posição num dos mesmos dias? */
+  const alvo = new Set(adRows.filter(r => adKey(r) === novaKey).map(r => r.data));
+  const choque = meus.filter(r => alvo.has(r.data)).map(r => fmtData(r.data));
+  if (choque.length) return toast(`Já existe um anúncio nessa posição em ${choque.slice(0, 3).join(', ')}${choque.length > 3 ? '…' : ''}.`, true);
+
+  botaoOcupado('adAssignSave', true);
+  let error;
+  if (dupMode) {
+    /* copia explícita: só as colunas graváveis — nunca id nem timestamps */
+    const copias = meus.map(r => ({
+      data: r.data, projeto, user_id: uid,
+      campanha: novo.campanha, conjunto: novo.conjunto, anuncio: novo.anuncio, status: r.status,
+      gasto: r.gasto, faturado: r.faturado, compras: r.compras, cliques: r.cliques,
+      cpm: r.cpm, cpc: r.cpc, ctr: r.ctr, custo_por_compra: r.custo_por_compra, roi: r.roi,
+      hook_rate: r.hook_rate, retencao_video: r.retencao_video, frequencia: r.frequencia,
+      observacoes: r.observacoes ?? null,
+    }));
+    ({ error } = await db.from('ads_anuncios_diarios').insert(copias));
+  } else {
+    ({ error } = await db.from('ads_anuncios_diarios').update(novo).in('id', meus.map(r => r.id)));
+  }
+  botaoOcupado('adAssignSave', false);
+  if (error) return toast('Erro: ' + (error.message || error), true);
+  if (selectedAds) { if (!dupMode) selectedAds.delete(adAberto); selectedAds.add(novaKey); }
+  adAberto = novaKey;
+  ocultarFormsDrawer();
+  toast(dupMode ? 'Criativo duplicado ✓' : 'Criativo movido ✓');
+  await loadData();
 }
 
 /* ---- comparação ---- */
@@ -2452,11 +2628,11 @@ function renderAll() {
   renderAdDatalist();
   if (abaAtiva === 'anuncios') {
     renderArvore();
-    renderAnalise();
     renderCompare();
     renderRetencao();
     renderAdsHist();
   }
+  renderAdDrawer();   // a gaveta de detalhe pode estar aberta sobre qualquer aba
   if (abaAtiva === 'diario') renderDiario();
   if (abaAtiva === 'conta') renderConta();
   updatePreviewsGeral();
@@ -3844,9 +4020,36 @@ async function iniciar() {
   $('btnCsvGeral').addEventListener('click', exportCsvGeral);
   $('btnCsvAds').addEventListener('click', exportCsvAds);
 
-  $('anaAd').addEventListener('change', renderAnalise);
   $('cmpMetric').addEventListener('change', renderCompare);
   $('histAdFilter').addEventListener('change', renderAdsHist);
+
+  /* ---- gaveta de detalhe do anúncio ---- */
+  $('adDrawer').querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', fecharAd));
+  $('adPrev').addEventListener('click', () => pularAd(-1));
+  $('adNext').addEventListener('click', () => pularAd(1));
+  $('adSelect').addEventListener('change', () => {
+    adAberto = $('adSelect').value; ocultarFormsDrawer(); renderAdDrawer();
+    $('adDrawer').querySelector('.drawerscroll').scrollTop = 0;
+  });
+  $('adAddDay').addEventListener('click', abrirAddDia);
+  $('adAssign').addEventListener('click', abrirAtribuir);
+  $('adDup').addEventListener('click', abrirDuplicar);
+  $('adDelete').addEventListener('click', async () => {
+    const key = adAberto;
+    await excluirAnuncio(key);
+    if (!adKeys().includes(key)) fecharAd();   // só fecha se realmente excluiu
+  });
+  $('adDayForm').addEventListener('submit', salvarDiaDoAnuncio);
+  $('adAssignForm').addEventListener('submit', salvarAtribuir);
+  $('adDrawer').querySelectorAll('[data-cancelform]').forEach(b =>
+    b.addEventListener('click', () => $(b.dataset.cancelform).classList.add('hidden')));
+  for (const id of ['dd_gasto', 'dd_faturado', 'dd_compras', 'dd_cliques'])
+    $(id).addEventListener('input', atualizarPreviewDia);
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !adAberto) return;
+    if ($('sheetHost').children.length) return;   // um confirm/mover em cima fecha primeiro
+    fecharAd();
+  });
 
   /* navegação + FAB */
   $('fabLancar').addEventListener('click', () => { navigator.vibrate?.(8); abrirFormDia(); });
