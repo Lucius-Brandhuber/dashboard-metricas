@@ -3769,44 +3769,82 @@ function ligarInstalacao() {
    Auth
 ================================================================= */
 let modoCadastro = false;
+let modoResgate = false;                 // logado, mas ainda falta resgatar o convite
+const CONVITE_PENDENTE = 'ergo_convite_pendente';
 
 function showLogin() {
   $('splash').classList.add('hidden');
   $('app').classList.add('hidden');
   $('login').classList.remove('hidden');
+  modoResgate = false;
+  aplicarModoAuth();
 }
 function erroLogin(msg) {
   $('loginErr').textContent = msg;
   $('loginErr').classList.remove('hidden');
 }
-function alternarModo() {
-  modoCadastro = !modoCadastro;
-  $('loginConvite').classList.toggle('hidden', !modoCadastro);
+/** desenha o cartão de login conforme o modo: entrar · criar conta · resgatar.
+    Campos escondidos perdem o `required`, senão bloqueiam o submit. */
+function aplicarModoAuth() {
+  const pedeConta = !modoResgate;                 // e-mail + senha
+  const pedeCodigo = modoCadastro || modoResgate; // código de convite
+  $('loginEmail').classList.toggle('hidden', !pedeConta);
+  $('loginPass').classList.toggle('hidden', !pedeConta);
+  $('loginConvite').classList.toggle('hidden', !pedeCodigo);
+  $('loginEmail').required = pedeConta;
+  $('loginPass').required = pedeConta;
+  $('loginConvite').required = pedeCodigo;
   $('loginPass').setAttribute('autocomplete', modoCadastro ? 'new-password' : 'current-password');
-  $('loginBtn').textContent = modoCadastro ? 'Criar conta' : 'Entrar';
+  $('loginBtn').textContent = modoResgate ? 'Resgatar convite' : modoCadastro ? 'Criar conta' : 'Entrar';
+  $('btnAuthSwitch').classList.toggle('hidden', modoResgate);
   $('btnAuthSwitch').textContent = modoCadastro ? 'Já tenho conta — entrar' : 'Tenho um convite — criar conta';
-  $('authSub').textContent = modoCadastro
-    ? 'Beta fechado. Use o código do seu convite.'
+  $('btnEsqueci').classList.toggle('hidden', modoResgate);
+  $('btnSair').classList.toggle('hidden', !modoResgate);
+  $('authSub').textContent = modoResgate
+    ? `Você entrou como ${userEmail}. Falta resgatar seu convite para liberar o acesso.`
+    : modoCadastro ? 'Beta fechado. Use o código do seu convite.'
     : 'A zona onde ainda dá pra extrair energia.';
+}
+function alternarModo() {
+  if (modoResgate) return;
+  modoCadastro = !modoCadastro;
   $('loginErr').classList.add('hidden');
+  aplicarModoAuth();
+}
+/** logado sem convite: em vez de deslogar num beco, fica logado e pede o código.
+    `resgatar_convite` vale para qualquer usuário autenticado, então isto sempre sai. */
+function entrarModoResgate() {
+  modoResgate = true; modoCadastro = false;
+  $('app').classList.add('hidden');
+  $('splash').classList.add('hidden');
+  $('login').classList.remove('hidden');
+  $('loginConvite').value = '';
+  aplicarModoAuth();
+  setTimeout(() => $('loginConvite').focus(), 60);
 }
 
 async function enterApp() {
   const { data: { user } } = await db.auth.getUser();
   if (!user) return showLogin();
-
-  /* portão do beta: sem convite resgatado, não entra */
-  const { data: ok, error } = await db.rpc('tenho_acesso');
-  if (error) { erroLogin('Não consegui validar seu acesso: ' + error.message); await db.auth.signOut(); return showLogin(); }
-  if (!ok) {
-    await db.auth.signOut();
-    showLogin();
-    return erroLogin('Esta conta não tem convite ativo. Crie a conta com um código de convite.');
-  }
-
   uid = user.id;
   userEmail = user.email || '';
 
+  /* portão do beta: precisa de um convite resgatado */
+  let { data: ok, error } = await db.rpc('tenho_acesso');
+  if (error) { erroLogin('Não consegui validar seu acesso: ' + error.message); await db.auth.signOut(); return showLogin(); }
+
+  /* pós-confirmação de e-mail (mesmo aparelho): resgata o código que ficou guardado */
+  if (!ok) {
+    const pend = localStorage.getItem(CONVITE_PENDENTE);
+    if (pend) {
+      const r = await db.rpc('resgatar_convite', { p_codigo: pend });
+      if (!r.error && r.data) { ok = true; localStorage.removeItem(CONVITE_PENDENTE); }
+    }
+  }
+  /* ainda sem acesso: NÃO desloga — fica logado e pede o código (sem beco sem saída) */
+  if (!ok) return entrarModoResgate();
+
+  modoResgate = false;
   $('login').classList.add('hidden');
   $('app').classList.remove('hidden');
   /* o esqueleto entra ANTES da rede. A alternativa é uma tela vazia enquanto
@@ -3836,33 +3874,58 @@ async function enterApp() {
 
 async function submeterAuth(e) {
   e.preventDefault();
-  const email = $('loginEmail').value.trim();
-  const senha = $('loginPass').value;
   botaoOcupado('loginBtn', true);
   $('loginErr').classList.add('hidden');
 
   try {
-    if (modoCadastro) {
+    if (modoResgate) {
+      /* já logado, só falta o código */
       const codigo = $('loginConvite').value.trim();
       if (!codigo) throw new Error('Informe o código do convite.');
+      const { data: ok, error } = await db.rpc('resgatar_convite', { p_codigo: codigo });
+      if (error) throw error;
+      if (!ok) throw new Error('Código de convite inválido ou já usado.');
+      localStorage.removeItem(CONVITE_PENDENTE);
+      modoResgate = false;
+      await enterApp();
 
-      const { error: e1 } = await db.auth.signUp({ email, password: senha });
-      if (e1 && !/already registered/i.test(e1.message)) throw e1;
+    } else if (modoCadastro) {
+      const email = $('loginEmail').value.trim();
+      const senha = $('loginPass').value;
+      const codigo = $('loginConvite').value.trim();
+      if (!codigo) throw new Error('Informe o código do convite.');
+      if (senha.length < 6) throw new Error('A senha precisa de pelo menos 6 caracteres.');
 
-      /* se o projeto exigir confirmação de e-mail, não há sessão ainda */
-      const { data: { session } } = await db.auth.getSession();
-      if (!session) {
-        const { error: e2 } = await db.auth.signInWithPassword({ email, password: senha });
-        if (e2) throw new Error('Conta criada. Confirme o e-mail e depois entre.');
+      const { data: sd, error: e1 } = await db.auth.signUp({ email, password: senha });
+      if (e1) {
+        if (/already registered|already exists/i.test(e1.message))
+          throw new Error('Essa conta já existe. Toque em “Já tenho conta — entrar”. Se faltar resgatar o convite, o app pede na hora.');
+        throw e1;
       }
-      const { data: resg, error: e3 } = await db.rpc('resgatar_convite', { p_codigo: codigo });
-      if (e3) throw e3;
-      if (!resg) { await db.auth.signOut(); throw new Error('Código de convite inválido ou já usado.'); }
+      if (sd.session) {
+        /* confirmação de e-mail desligada: entra e resgata em um passo só */
+        const { data: ok, error: e3 } = await db.rpc('resgatar_convite', { p_codigo: codigo });
+        if (e3) throw e3;
+        if (!ok) { await db.auth.signOut(); throw new Error('Código de convite inválido ou já usado.'); }
+        localStorage.removeItem(CONVITE_PENDENTE);
+        await enterApp();
+      } else {
+        /* confirmação de e-mail ligada: guarda o código e orienta — o resgate
+           acontece sozinho quando a pessoa volta pelo link (mesmo aparelho) */
+        localStorage.setItem(CONVITE_PENDENTE, codigo);
+        erroLogin('Conta criada! Confirme pelo link que enviamos ao seu e-mail. Ao voltar, seu convite é resgatado automaticamente.');
+      }
+
     } else {
+      const email = $('loginEmail').value.trim();
+      const senha = $('loginPass').value;
       const { error } = await db.auth.signInWithPassword({ email, password: senha });
-      if (error) throw new Error(/invalid login/i.test(error.message) ? 'E-mail ou senha incorretos.' : error.message);
+      if (error) throw new Error(
+        /invalid login/i.test(error.message) ? 'E-mail ou senha incorretos.'
+        : /not confirmed/i.test(error.message) ? 'Confirme seu e-mail pelo link que enviamos e entre de novo.'
+        : error.message);
+      await enterApp();
     }
-    await enterApp();
   } catch (err) {
     erroLogin(err.message || String(err));
   }
@@ -4097,6 +4160,12 @@ async function iniciar() {
   $('loginForm').addEventListener('submit', submeterAuth);
   $('btnAuthSwitch').addEventListener('click', alternarModo);
   $('btnEsqueci').addEventListener('click', esqueciSenha);
+  $('btnSair').addEventListener('click', async () => {
+    await db.auth.signOut();
+    localStorage.removeItem(CONVITE_PENDENTE);
+    modoResgate = false; modoCadastro = false;
+    showLogin();
+  });
   $('btnLogout').addEventListener('click', async () => {
     if (!await confirmar({ titulo: 'Sair do Ergosphere?', texto: 'Você vai precisar entrar de novo neste aparelho.', ok: 'Sair' })) return;
     await db.auth.signOut();
