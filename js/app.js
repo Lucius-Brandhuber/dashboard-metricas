@@ -3136,7 +3136,55 @@ function ecoPreviewText() {
   $('ecoPreview').innerHTML = `Ponto de equilíbrio: <b>ROAS ${fmtDec(be)}</b> · alvo para ${nf0.format(marg)}% de margem: <b>ROAS ${fmtDec(be * (1 + marg / 100))}</b>`;
 }
 
+/* =================================================================
+   Tela de falha — o app JAMAIS pode terminar num vazio preto.
+   O caso real: o navegador entrega o index.html novo e reusa do cache um
+   app.js velho (GitHub Pages manda max-age=600 e subrecurso não revalida).
+   O script antigo morre procurando elementos que sumiram, e como o CSS
+   antigo não conhece .splash nem .login, a tela fica preta e muda.
+   Por isso esta função não depende de NENHUM elemento do documento.
+================================================================= */
+function telaDeFalha(err) {
+  const msg = err?.message || String(err);
+  console.error('[Ergosphere] falha ao iniciar:', err);
+  try {
+    for (const id of ['splash', 'app', 'onboard']) $(id)?.classList.add('hidden');
+    $('sheetHost') && ($('sheetHost').innerHTML = '');
+  } catch (_) { /* documento de outra versão: siga em frente */ }
+
+  document.body.insertAdjacentHTML('beforeend', `<div style="
+      position:fixed; inset:0; z-index:9999; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center;
+      background:#08080B; color:#F4F3EE; font:400 15px/1.5 system-ui, sans-serif;">
+    <div style="font-size:13px;letter-spacing:.28em;color:#C8A86A;font-weight:600">ERGOSPHERE</div>
+    <h1 style="margin:0;font-size:20px;font-weight:600">O app não conseguiu iniciar</h1>
+    <p style="margin:0;max-width:38ch;color:#A6A199">Quase sempre é uma versão antiga presa no cache do navegador. Recarregue forçando a atualização.</p>
+    <button id="fatalReload" style="
+        background:linear-gradient(180deg,#E4C88A,#C8A86A); color:#0b0b0b; border:0; cursor:pointer;
+        border-radius:10px; padding:14px 22px; font:600 15px system-ui,sans-serif; min-height:48px;">
+      Recarregar agora</button>
+    <code style="font-size:11px;color:#6E6960;max-width:44ch;word-break:break-word">${String(msg).replace(/[<>&]/g, '')}</code>
+  </div>`);
+
+  document.getElementById('fatalReload')?.addEventListener('click', async () => {
+    /* limpa o que pode estar servindo versão velha, depois recarrega do zero */
+    try {
+      if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+      if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+    } catch (_) { /* nada a fazer */ }
+    location.reload();
+  });
+}
+
 async function boot() {
+  try {
+    await iniciar();
+  } catch (err) {
+    telaDeFalha(err);
+  }
+}
+
+async function iniciar() {
   registrarSW();
 
   const savedPeriod = parseInt(localStorage.getItem('ads_dash_period') || '0', 10);
