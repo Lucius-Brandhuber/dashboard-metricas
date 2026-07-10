@@ -142,8 +142,8 @@ main { padding: 18px clamp(14px, 3vw, 32px) 60px; max-width: 1240px; margin: 0 a
 .kpi .kvalue.good { color: var(--good-text); }
 .kpi .kvalue.bad { color: var(--bad); }
 .kpi .kdelta { font-size: 12.5px; font-weight: 600; margin-top: 4px; color: var(--muted); }
-.kpi .kdelta.up { color: var(--good-text); }
-.kpi .kdelta.down { color: var(--bad); }
+.kpi .kdelta.up, .kpi .kdelta .up { color: var(--good-text); }
+.kpi .kdelta.down, .kpi .kdelta .down { color: var(--bad); }
 
 /* ===== Form ===== */
 .formcard summary {
@@ -186,6 +186,42 @@ main { padding: 18px clamp(14px, 3vw, 32px) 60px; max-width: 1240px; margin: 0 a
 .chartsgrid .chartcard:first-child { grid-column: span 2; }
 .chartsgrid .chartcard:first-child .chartbox { height: 280px; }
 
+/* ===== Análise do anúncio ===== */
+.anakpis { grid-template-columns: repeat(5, 1fr); margin-bottom: 14px; }
+.anakpis .kpi { background: var(--card-2); }
+.anakpis .kvalue { font-size: clamp(19px, 3.2vw, 24px); }
+
+.diag {
+  border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  margin-bottom: 18px; background: var(--card-2);
+}
+.diag.good { border-color: rgba(12, 163, 12, 0.4); }
+.diag.warn { border-color: rgba(250, 178, 25, 0.4); }
+.diag.bad { border-color: rgba(208, 59, 59, 0.45); }
+.diaghead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.verdict { font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 12px; border-radius: 999px; }
+.verdict.good { background: rgba(12, 163, 12, 0.16); color: var(--good-text); }
+.verdict.warn { background: rgba(250, 178, 25, 0.16); color: var(--warn); }
+.verdict.bad { background: rgba(208, 59, 59, 0.18); color: var(--bad); }
+.verdict.dim { background: rgba(139, 139, 150, 0.16); color: var(--muted); }
+.diaghead .vsum { font-size: 13.5px; color: var(--text-2); font-weight: 600; }
+.diag ul { margin: 0; padding-left: 18px; }
+.diag li { font-size: 13.5px; color: var(--text-2); margin: 5px 0; }
+.diag li b { color: var(--text); font-weight: 600; }
+.diag li.up::marker { color: var(--good-text); }
+.diag li.down::marker { color: var(--bad); }
+.diagfoot { font-size: 11.5px; color: var(--muted); margin: 10px 0 0; }
+
+.smallmults { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+.mult { border: 1px solid var(--border); border-radius: 12px; padding: 12px 12px 6px; background: var(--card-2); }
+.mult h4 { margin: 0 0 8px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.chartbox.mini { height: 130px; }
+.anasub { font-size: 13px; font-weight: 700; color: var(--text-2); margin: 0 0 2px; }
+.delta { font-size: 11.5px; font-weight: 600; margin-left: 5px; }
+.delta.up { color: var(--good-text); }
+.delta.down { color: var(--bad); }
+.diaday { font-weight: 700; color: var(--text); }
+
 /* ===== Tables ===== */
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; white-space: nowrap; font-size: 13.5px; }
@@ -210,6 +246,14 @@ td .rowbtns { display: flex; gap: 6px; justify-content: flex-end; }
 }
 .rowbtn:hover { color: var(--text); border-color: var(--border-strong); }
 .rowbtn.del:hover { color: var(--bad); border-color: var(--bad); }
+
+.adlink {
+  background: none; border: none; padding: 0; font: inherit; color: var(--text);
+  cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+  border-bottom: 1px dashed var(--border-strong);
+}
+.adlink:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.adlink .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
 .badge {
   display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
@@ -252,10 +296,15 @@ td .rowbtns { display: flex; gap: 6px; justify-content: flex-end; }
   .fgrid { grid-template-columns: repeat(2, 1fr); }
   .chartsgrid { grid-template-columns: 1fr; }
   .chartsgrid .chartcard:first-child { grid-column: span 1; }
+  .smallmults { grid-template-columns: repeat(2, 1fr); }
+  .anakpis { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 640px) {
   body { font-size: 14px; }
   .kpis { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .anakpis { grid-template-columns: repeat(2, 1fr); }
+  .smallmults { grid-template-columns: 1fr; gap: 8px; }
+  #anaAd { max-width: 55vw; }
   .kpi { padding: 13px 14px; }
   .brand span { display: none; }
   .card { padding: 14px; }

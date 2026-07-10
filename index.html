@@ -158,6 +158,33 @@
         <p class="empty hidden" id="emptyRanking">Nenhum anúncio lançado ainda — use “Lançar anúncio” acima.</p>
       </div>
 
+      <div class="card" id="anaCard">
+        <div class="cardhead">
+          <h3>Análise do anúncio <span class="sub">· histórico completo, dia a dia</span></h3>
+          <select id="anaAd" class="select"></select>
+        </div>
+
+        <p class="empty hidden" id="anaEmpty">Lance anúncios para analisar a evolução deles.</p>
+
+        <div id="anaBody" class="hidden">
+          <div class="kpis anakpis" id="anaKpis"></div>
+          <div id="anaDiag"></div>
+
+          <div class="smallmults">
+            <div class="mult"><h4>ROI por dia</h4><div class="chartbox mini"><canvas id="anaRoi"></canvas></div></div>
+            <div class="mult"><h4>Gasto vs Faturado</h4><div class="chartbox mini"><canvas id="anaGasto"></canvas></div></div>
+            <div class="mult"><h4>CPC</h4><div class="chartbox mini"><canvas id="anaCpc"></canvas></div></div>
+            <div class="mult"><h4>CTR</h4><div class="chartbox mini"><canvas id="anaCtr"></canvas></div></div>
+            <div class="mult"><h4>Hook Rate</h4><div class="chartbox mini"><canvas id="anaHook"></canvas></div></div>
+            <div class="mult"><h4>Frequência</h4><div class="chartbox mini"><canvas id="anaFreq"></canvas></div></div>
+          </div>
+
+          <h4 class="anasub">Linha do tempo</h4>
+          <p class="formhint" style="margin:0 0 10px">Cada linha compara o dia com o dia anterior desse mesmo anúncio.</p>
+          <div class="tablewrap"><table id="tblAna"></table></div>
+        </div>
+      </div>
+
       <div class="card chartcard">
         <div class="cardhead">
           <h3>Comparação entre anúncios</h3>

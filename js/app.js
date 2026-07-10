@@ -440,7 +440,7 @@ function renderAdDatalist() {
 }
 
 const COLS_RANK = [
-  { key: 'anuncio', label: 'Anúncio', get: a => a.anuncio.toLowerCase(), fmt: a => `<span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${a.color};margin-right:7px"></span>${esc(a.anuncio)}` },
+  { key: 'anuncio', label: 'Anúncio', get: a => a.anuncio.toLowerCase(), fmt: a => `<button class="adlink" data-ana="${esc(a.anuncio)}" title="Analisar este anúncio"><span class="dot" style="background:${a.color}"></span>${esc(a.anuncio)}</button>` },
   { key: 'status', label: 'Status', get: a => a.status, fmt: a => `<span class="badge ${a.status}">${a.status}</span>` },
   { key: 'gasto', label: 'Gasto', get: a => a.gasto, fmt: a => fmtBRL(a.gasto) },
   { key: 'faturado', label: 'Faturado', get: a => a.faturado, fmt: a => fmtBRL(a.faturado) },
@@ -508,6 +508,228 @@ function renderRanking() {
     if (sortRank.key === k) sortRank.dir *= -1; else sortRank = { key: k, dir: -1 };
     renderRanking();
   }));
+  tbl.querySelectorAll('[data-ana]').forEach(b => b.addEventListener('click', () => {
+    $('anaAd').value = b.dataset.ana;
+    renderAnalise();
+    $('anaCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+}
+
+/* =================================================================
+   ANÁLISE DE UM ANÚNCIO (histórico completo, dia a dia)
+================================================================= */
+const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+
+/* variação % entre a média da metade recente e a da metade inicial */
+function trendPct(list, fn) {
+  const vals = list.map(fn).filter(v => v != null);
+  if (vals.length < 4) return null;
+  const k = Math.floor(vals.length / 2);
+  const early = avg(vals.slice(0, vals.length - k));
+  const recent = avg(vals.slice(-k));
+  if (!early) return null;
+  return ((recent - early) / Math.abs(early)) * 100;
+}
+
+/* Diagnóstico heurístico do anúncio */
+function diagnose(days) {
+  const gasto = days.reduce((s, r) => s + (Number(r.gasto) || 0), 0);
+  const faturado = days.reduce((s, r) => s + (Number(r.faturado) || 0), 0);
+  const compras = days.reduce((s, r) => s + (Number(r.compras) || 0), 0);
+  const roi = gasto > 0 ? faturado / gasto : null;
+  const status = days[days.length - 1].status;
+
+  const notes = [];
+  const tRoi = trendPct(days, adRoiOf);
+  const tCpc = trendPct(days, r => r.cpc);
+  const tFreq = trendPct(days, r => r.frequencia);
+  const freqs = days.map(r => r.frequencia).filter(v => v != null);
+  const lastFreq = freqs.length ? freqs[freqs.length - 1] : null;
+  const hooks = days.map(r => r.hook_rate).filter(v => v != null);
+  const hookAvg = hooks.length ? avg(hooks) : null;
+
+  /* ROI dos últimos dias — o acumulado esconde criativo que está morrendo agora */
+  const recentRois = days.slice(-3).map(adRoiOf).filter(v => v != null);
+  const roiRecente = recentRois.length ? avg(recentRois) : null;
+  const desgastando = (tRoi != null && tRoi < -25) || (lastFreq != null && lastFreq >= 2.5);
+
+  let verdict, vClass, vSum;
+
+  if (days.length < 2) {
+    verdict = 'Dados insuficientes'; vClass = 'dim';
+    vSum = 'Só 1 dia lançado — lance mais dias para ver tendência.';
+  } else if (roi == null) {
+    verdict = 'Dados insuficientes'; vClass = 'dim';
+    vSum = 'Faltam gasto/faturado para calcular o ROI.';
+  } else if (compras === 0 && gasto > 0) {
+    verdict = 'Pausar'; vClass = 'bad';
+    vSum = `${fmtBRL(gasto)} gastos e nenhuma compra em ${days.length} dias.`;
+  } else if (roiRecente != null && roiRecente < settings.roiMin && roi >= settings.roiMin) {
+    /* lucrou no acumulado, mas os últimos dias estão no prejuízo */
+    verdict = 'Pausar'; vClass = 'bad';
+    vSum = `Acumulado ainda positivo (${nf2.format(roi)}), mas os últimos ${recentRois.length} dias rodaram a ROI ${nf2.format(roiRecente)} — está queimando dinheiro agora.`;
+  } else if (roi >= settings.roiMin && desgastando) {
+    verdict = 'Atenção'; vClass = 'warn';
+    vSum = `ROI de ${nf2.format(roi)} ainda no lucro, mas o criativo dá sinais de desgaste — troque ou renove antes de cair.`;
+  } else if (roi >= settings.roiMin * 1.3) {
+    verdict = 'Escalar'; vClass = 'good';
+    vSum = `ROI acumulado de ${nf2.format(roi)} — bem acima do seu mínimo (${nf2.format(settings.roiMin)}).`;
+  } else if (roi >= settings.roiMin) {
+    verdict = 'Manter'; vClass = 'good';
+    vSum = `ROI acumulado de ${nf2.format(roi)} — no lucro, mas sem folga grande.`;
+  } else {
+    verdict = 'Atenção'; vClass = 'bad';
+    vSum = `ROI acumulado de ${nf2.format(roi)} — abaixo do mínimo (${nf2.format(settings.roiMin)}), está no prejuízo.`;
+  }
+
+  if (roiRecente != null && days.length >= 3) {
+    notes.unshift({ dir: roiRecente >= settings.roiMin ? 'up' : 'down', html: `Últimos ${recentRois.length} dias rodaram a ROI <b>${nf2.format(roiRecente)}</b> (acumulado: ${nf2.format(roi)}).` });
+  }
+
+  if (tRoi != null) {
+    const up = tRoi >= 0;
+    notes.push({ dir: up ? 'up' : 'down', html: `ROI ${up ? 'subindo' : 'caindo'}: <b>${up ? '+' : ''}${nf2.format(tRoi)}%</b> nos dias recentes vs os primeiros.` });
+  }
+  if (tCpc != null && tCpc > 15) notes.push({ dir: 'down', html: `CPC subiu <b>${nf2.format(tCpc)}%</b> — o clique está ficando mais caro.` });
+  if (tCpc != null && tCpc < -15) notes.push({ dir: 'up', html: `CPC caiu <b>${nf2.format(Math.abs(tCpc))}%</b> — clique mais barato.` });
+  if (lastFreq != null && lastFreq >= 2.5) notes.push({ dir: 'down', html: `Frequência em <b>${nf2.format(lastFreq)}</b> — o mesmo público está vendo demais (fadiga de criativo).` });
+  else if (tFreq != null && tFreq > 25) notes.push({ dir: 'down', html: `Frequência subindo <b>${nf2.format(tFreq)}%</b> — fique de olho na fadiga.` });
+  if (hookAvg != null && hookAvg < 20) notes.push({ dir: 'down', html: `Hook rate médio de <b>${nf2.format(hookAvg)}%</b> — os 3 primeiros segundos não estão segurando.` });
+  else if (hookAvg != null && hookAvg >= 30) notes.push({ dir: 'up', html: `Hook rate médio de <b>${nf2.format(hookAvg)}%</b> — a abertura do criativo prende bem.` });
+  if (compras > 0 && gasto > 0) notes.push({ dir: '', html: `Custo por compra de <b>${fmtBRL(gasto / compras)}</b> em ${compras} ${compras === 1 ? 'compra' : 'compras'}.` });
+  if (status === 'pausado') notes.push({ dir: 'down', html: 'Anúncio marcado como <b>pausado</b> no último lançamento.' });
+
+  return { verdict, vClass, vSum, notes, gasto, faturado, compras, roi, roiRecente };
+}
+
+function renderAnaKpis(d, days) {
+  const nComp = `${d.compras} ${d.compras === 1 ? 'compra' : 'compras'}`;
+  const roiSub = d.roiRecente == null
+    ? 'mínimo: ' + nf2.format(settings.roiMin)
+    : `<span class="${d.roiRecente >= settings.roiMin ? 'up' : 'down'}">recente: ${nf2.format(d.roiRecente)}</span>`;
+
+  $('anaKpis').innerHTML = [
+    { l: 'Gasto total', v: fmtBRL(d.gasto), sub: `em ${days.length} ${days.length === 1 ? 'dia' : 'dias'}` },
+    { l: 'Faturado total', v: fmtBRL(d.faturado), sub: nComp },
+    { l: 'ROI acumulado', v: d.roi == null ? '—' : fmtDec(d.roi), cls: d.roi == null ? '' : (d.roi >= settings.roiMin ? 'good' : 'bad'), sub: roiSub },
+    { l: 'Custo por compra', v: d.compras > 0 ? fmtBRL(d.gasto / d.compras) : '—', sub: nComp },
+    { l: 'Dias rodando', v: `${days.length}`, sub: `${fmtDataCurta(days[0].data)} → ${fmtDataCurta(days[days.length - 1].data)}` },
+  ].map(k => `<div class="kpi">
+      <div class="klabel">${k.l}</div>
+      <div class="kvalue ${k.cls || ''}">${k.v}</div>
+      <div class="kdelta">${k.sub}</div>
+    </div>`).join('');
+}
+
+function renderAnaDiag(d) {
+  $('anaDiag').className = 'diag ' + d.vClass;
+  $('anaDiag').innerHTML = `
+    <div class="diaghead">
+      <span class="verdict ${d.vClass}">${d.verdict}</span>
+      <span class="vsum">${d.vSum}</span>
+    </div>
+    ${d.notes.length ? `<ul>${d.notes.map(n => `<li class="${n.dir}">${n.html}</li>`).join('')}</ul>` : ''}
+    <p class="diagfoot">Leitura automática dos seus números — use como sinal, não como ordem.</p>`;
+}
+
+function miniOptions(days, fmt, refline) {
+  const o = baseOptions(fmt, { plugins: refline ? { refline } : {} });
+  o.plugins.tooltip.callbacks.title = items => `Dia ${items[0].dataIndex + 1} · ${fmtData(days[items[0].dataIndex].data)}`;
+  o.scales.y.ticks.maxTicksLimit = 4;
+  return o;
+}
+
+function renderAnaCharts(days) {
+  const labels = days.map((_, i) => 'D' + (i + 1));
+  const money = (v, axis) => axis ? 'R$ ' + nf0.format(v) : fmtBRL(v);
+  const money2 = (v, axis) => axis ? 'R$ ' + nf2.format(v) : fmtBRL(v);
+  const pct = (v, axis) => axis ? nf0.format(v) + '%' : fmtPct(v);
+
+  makeChart('anaRoi', {
+    type: 'line',
+    data: { labels, datasets: [lineDataset('ROI', days.map(adRoiOf), SERIES[0], true)] },
+    options: miniOptions(days, v => fmtDec(v), { y: settings.roiMin }),
+  });
+
+  const gastoOpts = miniOptions(days, money);
+  gastoOpts.plugins.legend = { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, color: C.text2, font: { size: 10 } } };
+  makeChart('anaGasto', {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Gasto', data: days.map(r => r.gasto), backgroundColor: SERIES[0], borderRadius: 4, borderSkipped: 'start', maxBarThickness: 18, categoryPercentage: 0.65, barPercentage: 0.9 },
+        { label: 'Faturado', data: days.map(r => r.faturado), backgroundColor: SERIES[1], borderRadius: 4, borderSkipped: 'start', maxBarThickness: 18, categoryPercentage: 0.65, barPercentage: 0.9 },
+      ],
+    },
+    options: gastoOpts,
+  });
+
+  makeChart('anaCpc', { type: 'line', data: { labels, datasets: [lineDataset('CPC', days.map(r => r.cpc), SERIES[0], true)] }, options: miniOptions(days, money2) });
+  makeChart('anaCtr', { type: 'line', data: { labels, datasets: [lineDataset('CTR', days.map(r => r.ctr), SERIES[0], true)] }, options: miniOptions(days, pct) });
+  makeChart('anaHook', { type: 'line', data: { labels, datasets: [lineDataset('Hook Rate', days.map(r => r.hook_rate), SERIES[0], true)] }, options: miniOptions(days, pct) });
+  makeChart('anaFreq', { type: 'line', data: { labels, datasets: [lineDataset('Frequência', days.map(r => r.frequencia), SERIES[0], true)] }, options: miniOptions(days, v => fmtDec(v)) });
+}
+
+/* seta de variação vs dia anterior; upGood define a cor (null = neutro) */
+function deltaTag(cur, prev, upGood) {
+  if (prev == null || prev === 0) return '';
+  const pct = ((cur - prev) / Math.abs(prev)) * 100;
+  if (Math.abs(pct) < 0.05) return '';
+  const up = pct > 0;
+  const cls = upGood === null ? '' : (up === upGood ? 'up' : 'down');
+  return `<span class="delta ${cls}">${up ? '▲' : '▼'}${nf0.format(Math.abs(pct))}%</span>`;
+}
+function cellWithDelta(fmtVal, cur, prev, upGood, extraCls) {
+  if (cur == null) return '<td class="dim">—</td>';
+  return `<td class="${extraCls || ''}">${fmtVal}${deltaTag(cur, prev, upGood)}</td>`;
+}
+
+function renderAnaTable(days) {
+  const tbl = $('tblAna');
+  const head = ['Dia', 'Data', 'Gasto', 'Faturado', 'ROI', 'Compras', 'Custo/Compra', 'CPC', 'CTR', 'Hook', 'Freq.', 'Status', 'Obs'];
+  tbl.innerHTML = '<thead><tr>' + head.map(h => `<th style="cursor:default">${h}</th>`).join('') + '</tr></thead><tbody>' +
+    days.map((r, i) => {
+      const p = i > 0 ? days[i - 1] : null;
+      const roi = adRoiOf(r), roiP = p ? adRoiOf(p) : null;
+      const cpa = cpaOf(r), cpaP = p ? cpaOf(p) : null;
+      const roiCls = roi == null ? '' : (roi >= settings.roiMin ? 'good' : 'bad');
+      return `<tr>
+        <td class="diaday">Dia ${i + 1}</td>
+        <td>${fmtData(r.data)}</td>
+        ${cellWithDelta(fmtBRL(r.gasto), r.gasto, p?.gasto, null)}
+        ${cellWithDelta(fmtBRL(r.faturado), r.faturado, p?.faturado, true)}
+        ${cellWithDelta(fmtDec(roi), roi, roiP, true, roiCls)}
+        ${cellWithDelta(fmtNum(r.compras), r.compras, p?.compras, true)}
+        ${cellWithDelta(fmtBRL(cpa), cpa, cpaP, false)}
+        ${cellWithDelta(fmtBRL(r.cpc), r.cpc, p?.cpc, false)}
+        ${cellWithDelta(fmtPct(r.ctr), r.ctr, p?.ctr, true)}
+        ${cellWithDelta(fmtPct(r.hook_rate), r.hook_rate, p?.hook_rate, true)}
+        ${cellWithDelta(fmtDec(r.frequencia), r.frequencia, p?.frequencia, false)}
+        <td><span class="badge ${r.status}">${r.status}</span></td>
+        <td class="dim" style="max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r.observacoes || '')}</td>
+      </tr>`;
+    }).join('') + '</tbody>';
+}
+
+function renderAnalise() {
+  const names = adNames();
+  const sel = $('anaAd');
+  const cur = sel.value && names.includes(sel.value) ? sel.value : names[0];
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}"${n === cur ? ' selected' : ''}>${esc(n)}</option>`).join('');
+
+  const has = names.length > 0;
+  $('anaEmpty').classList.toggle('hidden', has);
+  $('anaBody').classList.toggle('hidden', !has);
+  $('anaAd').classList.toggle('hidden', !has);
+  if (!has) return;
+
+  const days = adRows.filter(r => r.anuncio === cur).sort((a, b) => a.data.localeCompare(b.data));
+  const d = diagnose(days);
+  renderAnaKpis(d, days);
+  renderAnaDiag(d);
+  renderAnaCharts(days);
+  renderAnaTable(days);
 }
 
 /* ---- comparação ---- */
@@ -786,6 +1008,7 @@ function renderAll() {
   renderTableGeral();
   renderAdDatalist();
   renderRanking();
+  renderAnalise();
   renderCompare();
   renderAdsHist();
 }
@@ -843,6 +1066,7 @@ async function boot() {
   $('btnCsvAds').addEventListener('click', exportCsvAds);
 
   /* comparação */
+  $('anaAd').addEventListener('change', renderAnalise);
   $('cmpMetric').addEventListener('change', renderCompare);
   $('histAdFilter').addEventListener('change', renderAdsHist);
 
