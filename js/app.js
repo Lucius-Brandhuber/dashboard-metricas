@@ -481,7 +481,7 @@ function aggregateAds() {
 function renderRanking() {
   const tbl = $('tblRanking');
   const ags = aggregateAds();
-  $('rankPeriodo').textContent = period ? `· últimos ${period} dias` : '· todo o período';
+  $('rankPeriodo').textContent = period === 1 ? '· hoje' : period ? `· últimos ${period} dias` : '· todo o período';
   $('emptyRanking').classList.toggle('hidden', ags.length > 0);
   if (!ags.length) { tbl.innerHTML = ''; return; }
 
@@ -808,7 +808,7 @@ async function enterApp() {
 async function boot() {
   /* período salvo */
   const savedPeriod = parseInt(localStorage.getItem('ads_dash_period') || '0', 10);
-  if ([0, 7, 30].includes(savedPeriod)) period = savedPeriod;
+  if ([0, 1, 7, 30].includes(savedPeriod)) period = savedPeriod;
   syncPeriodChips();
 
   /* forms */
