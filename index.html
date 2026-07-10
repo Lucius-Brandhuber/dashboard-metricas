@@ -41,7 +41,7 @@
       <button class="tab" data-tab="anuncios" role="tab">Anúncios</button>
     </nav>
     <div class="topactions">
-      <button class="iconbtn" id="btnSettings" title="Configurar alertas">⚙</button>
+      <button class="iconbtn" id="btnSettings" title="Configurações">⚙</button>
       <button class="iconbtn" id="btnLogout" title="Sair">⏻</button>
     </div>
   </header>
@@ -78,29 +78,130 @@
         <button class="btn ghost small" id="btnCsvGeral">⬇ CSV</button>
       </div>
 
-      <div class="kpis" id="kpiGrid"></div>
+      <!-- ---------- 1. Resultado do negócio ---------- -->
+      <section class="block">
+        <div class="blockhead">
+          <h2>Resultado</h2>
+          <span class="blocksub" id="ecoHint"></span>
+        </div>
 
+        <div class="bands">
+          <div class="band">
+            <div class="bandlabel" id="labelDia">Último dia</div>
+            <div class="kpis kpis-5" id="kpiDia"></div>
+          </div>
+          <div class="band">
+            <div class="bandlabel" id="labelPeriodo">Período</div>
+            <div class="kpis kpis-5" id="kpiPeriodo"></div>
+          </div>
+        </div>
+
+        <div id="veredito"></div>
+
+        <div class="chartsgrid">
+          <div class="card chartcard hero">
+            <h3>Lucro por dia <span class="sub">· acima do zero você ganhou dinheiro</span></h3>
+            <div class="chartbox"><canvas id="chLucro"></canvas></div>
+            <p class="chartfoot">Clique numa barra para ver os anúncios daquele dia.</p>
+          </div>
+          <div class="card chartcard">
+            <h3>Lucro acumulado</h3>
+            <div class="chartbox"><canvas id="chLucroAcum"></canvas></div>
+          </div>
+          <div class="card chartcard">
+            <h3>ROAS <span class="sub" id="roasSub"></span></h3>
+            <div class="chartbox"><canvas id="chRoas"></canvas></div>
+            <p class="chartfoot">Um dia isolado é ruidoso — confie no acumulado.</p>
+          </div>
+          <div class="card chartcard">
+            <h3 id="gastoFatTitle">Gasto vs Faturamento</h3>
+            <div class="chartbox"><canvas id="chGastoFat"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- 2. Tráfego ---------- -->
+      <section class="block">
+        <div class="blockhead"><h2>Tráfego</h2><span class="blocksub" id="trafSub"></span></div>
+        <div class="kpis kpis-4 traf" id="kpiTrafego"></div>
+      </section>
+
+      <!-- ---------- 3. Funil ---------- -->
+      <section class="block">
+        <div class="blockhead">
+          <h2>Funil &amp; vazamentos</h2>
+          <span class="blocksub">agregado do período — taxas de um dia só são ruído</span>
+        </div>
+        <div class="funilgrid">
+          <div class="card">
+            <h3>Funil do Meta</h3>
+            <div class="chartbox funilbox"><canvas id="chFunil"></canvas></div>
+            <div class="stattiles" id="funilTaxas"></div>
+          </div>
+          <div class="card">
+            <h3>Aprovação no checkout</h3>
+            <div class="aprovbig"><span id="aprovPct">—</span><small id="aprovSub">sem vendas iniciadas lançadas</small></div>
+            <div class="chartbox aprovbox"><canvas id="chAprov"></canvas></div>
+            <p class="chartfoot">Etapa do gateway, separada do Meta: pix não pago, boleto vencido, cartão recusado.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- 4. Lançar dia ---------- -->
       <details class="card formcard" id="formCardGeral">
         <summary><span class="plus">＋</span> Lançar dia <span class="editing-tag hidden" id="editTagGeral">editando</span></summary>
         <form id="formGeral" class="metform">
+
           <div class="fgrid">
             <label>Data<input type="date" id="f_data" required></label>
             <label>Gasto (R$)<input type="text" id="f_gasto" inputmode="decimal" placeholder="0,00"></label>
-            <label>Faturado (R$)<input type="text" id="f_faturado" inputmode="decimal" placeholder="0,00"></label>
-            <label>Compras Front-End (R$)<input type="text" id="f_frontend" inputmode="decimal" placeholder="0,00"></label>
-            <label>Compras Back-End (R$)<input type="text" id="f_backend" inputmode="decimal" placeholder="0,00"></label>
-            <label>CPM (R$)<input type="text" id="f_cpm" inputmode="decimal" placeholder="0,00"></label>
-            <label>Cliques<input type="text" id="f_cliques" inputmode="numeric" placeholder="0"></label>
-            <label>CPC (R$)<input type="text" id="f_cpc" inputmode="decimal" placeholder="0,00"></label>
-            <label>Visualização de Destino<input type="text" id="f_visualizacao" inputmode="numeric" placeholder="0"></label>
-            <label>Perda de Tráfego (%)<input type="text" id="f_perda" inputmode="decimal" placeholder="0"></label>
-            <label>Finalização de Compra<input type="text" id="f_finalizacao" inputmode="numeric" placeholder="0"></label>
+            <label>Faturamento bruto (R$)<input type="text" id="f_faturado" inputmode="decimal" placeholder="0,00"></label>
             <label>Compras<input type="text" id="f_compra" inputmode="numeric" placeholder="0"></label>
-            <label>Taxa Conv. Checkout (%)<input type="text" id="f_taxa" inputmode="decimal" placeholder="auto"></label>
-            <label>ROI<input type="text" id="f_roi" inputmode="decimal" placeholder="auto"></label>
-            <label class="wide">Observações<input type="text" id="f_obs" placeholder="opcional"></label>
           </div>
-          <p class="formhint">O dia entra no projeto <b id="hintProjGeral"></b>. Taxa de conversão e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
+
+          <div class="formrow">
+            <button type="button" class="btn ghost small" id="btnSomarAds">Σ Somar dos anúncios</button>
+            <span class="formhint inline" id="previewDia"></span>
+          </div>
+
+          <details class="fgroup">
+            <summary>Funil do Meta</summary>
+            <div class="fgrid">
+              <label>Cliques<input type="text" id="f_cliques" inputmode="numeric" placeholder="0"></label>
+              <label>Visualizações de página<input type="text" id="f_visualizacao" inputmode="numeric" placeholder="0"></label>
+              <label>Checkouts iniciados (IC)<input type="text" id="f_finalizacao" inputmode="numeric" placeholder="0"></label>
+              <label>CPM (R$)<input type="text" id="f_cpm" inputmode="decimal" placeholder="0,00"></label>
+              <label>CPC (R$)<input type="text" id="f_cpc" inputmode="decimal" placeholder="0,00"></label>
+              <label>Perda de tráfego (%)<input type="text" id="f_perda" inputmode="decimal" placeholder="auto"></label>
+            </div>
+          </details>
+
+          <details class="fgroup">
+            <summary>Checkout &amp; financeiro <span class="fgrouphint">preencha só quando houver</span></summary>
+            <div class="fgrid">
+              <label>Vendas iniciadas<input type="text" id="f_iniciadas" inputmode="numeric" placeholder="0"></label>
+              <label>Faturamento líquido (R$)<input type="text" id="f_liquido" inputmode="decimal" placeholder="auto"></label>
+              <label>Despesas adicionais (R$)<input type="text" id="f_despesas" inputmode="decimal" placeholder="0,00"></label>
+              <label>Reembolsos (R$)<input type="text" id="f_reembolso" inputmode="decimal" placeholder="0,00"></label>
+              <label>Chargeback (R$)<input type="text" id="f_chargeback" inputmode="decimal" placeholder="0,00"></label>
+              <label>Vendas pendentes (R$)<input type="text" id="f_pendentes" inputmode="decimal" placeholder="0,00"></label>
+            </div>
+          </details>
+
+          <details class="fgroup">
+            <summary>Mix de oferta e overrides</summary>
+            <div class="fgrid">
+              <label>Compras front-end (R$)<input type="text" id="f_frontend" inputmode="decimal" placeholder="0,00"></label>
+              <label>Compras back-end (R$)<input type="text" id="f_backend" inputmode="decimal" placeholder="0,00"></label>
+              <label>Taxa conv. checkout (%)<input type="text" id="f_taxa" inputmode="decimal" placeholder="auto"></label>
+              <label>ROAS<input type="text" id="f_roi" inputmode="decimal" placeholder="auto"></label>
+            </div>
+          </details>
+
+          <div class="fgrid">
+            <label class="wide">Observações <span class="fgrouphint">vira anotação nos gráficos: “troquei o criativo”</span><input type="text" id="f_obs" placeholder="opcional"></label>
+          </div>
+
           <div class="formactions">
             <button type="submit" class="btn primary" id="btnSalvarGeral">Salvar dia</button>
             <button type="button" class="btn ghost hidden" id="btnCancelGeral">Cancelar edição</button>
@@ -108,16 +209,9 @@
         </form>
       </details>
 
-      <div class="chartsgrid">
-        <div class="card chartcard"><h3>Gasto vs Faturado</h3><div class="chartbox"><canvas id="chGastoFat"></canvas></div></div>
-        <div class="card chartcard"><h3>ROI</h3><div class="chartbox"><canvas id="chRoi"></canvas></div></div>
-        <div class="card chartcard"><h3>CPC</h3><div class="chartbox"><canvas id="chCpc"></canvas></div></div>
-        <div class="card chartcard"><h3>CPM</h3><div class="chartbox"><canvas id="chCpm"></canvas></div></div>
-        <div class="card chartcard"><h3>Taxa de Conversão do Checkout</h3><div class="chartbox"><canvas id="chTaxa"></canvas></div></div>
-      </div>
-
+      <!-- ---------- 5. Tabela de dias ---------- -->
       <div class="card">
-        <div class="cardhead"><h3>Todos os dias</h3></div>
+        <div class="cardhead"><h3>Todos os dias <span class="sub">· clique numa linha para ver os anúncios do dia</span></h3></div>
         <div class="tablewrap"><table id="tblGeral"></table></div>
         <p class="empty hidden" id="emptyGeral">Nenhum lançamento ainda — use “Lançar dia” acima.</p>
       </div>
@@ -153,20 +247,27 @@
             <datalist id="adNames"></datalist>
             <label>Status<select id="a_status"><option value="ativo">Ativo</option><option value="pausado">Pausado</option></select></label>
             <label>Gasto (R$)<input type="text" id="a_gasto" inputmode="decimal" placeholder="0,00"></label>
-            <label>CPM (R$)<input type="text" id="a_cpm" inputmode="decimal" placeholder="0,00"></label>
-            <label>CPC (R$)<input type="text" id="a_cpc" inputmode="decimal" placeholder="0,00"></label>
-            <label>Cliques<input type="text" id="a_cliques" inputmode="numeric" placeholder="0"></label>
-            <label>CTR (%)<input type="text" id="a_ctr" inputmode="decimal" placeholder="0,00"></label>
-            <label>Compras<input type="text" id="a_compras" inputmode="numeric" placeholder="0"></label>
-            <label>Custo por Compra (R$)<input type="text" id="a_cpa" inputmode="decimal" placeholder="auto"></label>
             <label>Faturado (R$)<input type="text" id="a_faturado" inputmode="decimal" placeholder="0,00"></label>
-            <label>ROI<input type="text" id="a_roi" inputmode="decimal" placeholder="auto"></label>
-            <label>Hook Rate 3s (%)<input type="text" id="a_hook" inputmode="decimal" placeholder="0,00"></label>
-            <label>Retenção de Vídeo (%)<input type="text" id="a_retencao" inputmode="decimal" placeholder="0,00"></label>
-            <label>Frequência<input type="text" id="a_frequencia" inputmode="decimal" placeholder="0,00"></label>
-            <label class="wide">Observações<input type="text" id="a_obs" placeholder="opcional"></label>
+            <label>Compras<input type="text" id="a_compras" inputmode="numeric" placeholder="0"></label>
           </div>
-          <p class="formhint">O anúncio entra no projeto <b id="hintProjAds"></b>. Custo por compra e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
+          <details class="fgroup">
+            <summary>Custo e criativo</summary>
+            <div class="fgrid">
+              <label>CPM (R$)<input type="text" id="a_cpm" inputmode="decimal" placeholder="0,00"></label>
+              <label>CPC (R$)<input type="text" id="a_cpc" inputmode="decimal" placeholder="0,00"></label>
+              <label>Cliques<input type="text" id="a_cliques" inputmode="numeric" placeholder="0"></label>
+              <label>CTR (%)<input type="text" id="a_ctr" inputmode="decimal" placeholder="0,00"></label>
+              <label>Hook Rate 3s (%)<input type="text" id="a_hook" inputmode="decimal" placeholder="0,00"></label>
+              <label>Retenção de vídeo (%)<input type="text" id="a_retencao" inputmode="decimal" placeholder="0,00"></label>
+              <label>Frequência<input type="text" id="a_frequencia" inputmode="decimal" placeholder="0,00"></label>
+              <label>Custo por compra (R$)<input type="text" id="a_cpa" inputmode="decimal" placeholder="auto"></label>
+              <label>ROAS<input type="text" id="a_roi" inputmode="decimal" placeholder="auto"></label>
+            </div>
+          </details>
+          <div class="fgrid">
+            <label class="wide">Observações <span class="fgrouphint">vira anotação na linha do tempo do anúncio</span><input type="text" id="a_obs" placeholder="opcional"></label>
+          </div>
+          <p class="formhint">O anúncio entra no projeto <b id="hintProjAds"></b>. Custo por compra e ROAS são calculados automaticamente — preencha só se quiser sobrescrever.</p>
           <div class="formactions">
             <button type="submit" class="btn primary" id="btnSalvarAds">Salvar anúncio</button>
             <button type="button" class="btn ghost hidden" id="btnCancelAds">Cancelar edição</button>
@@ -193,10 +294,9 @@
           <div id="anaDiag"></div>
 
           <div class="smallmults">
-            <div class="mult"><h4>ROI por dia</h4><div class="chartbox mini"><canvas id="anaRoi"></canvas></div></div>
+            <div class="mult"><h4>Lucro acumulado</h4><div class="chartbox mini"><canvas id="anaLucro"></canvas></div></div>
             <div class="mult"><h4>Gasto vs Faturado</h4><div class="chartbox mini"><canvas id="anaGasto"></canvas></div></div>
             <div class="mult"><h4>CPC</h4><div class="chartbox mini"><canvas id="anaCpc"></canvas></div></div>
-            <div class="mult"><h4>CTR</h4><div class="chartbox mini"><canvas id="anaCtr"></canvas></div></div>
             <div class="mult"><h4>Hook Rate</h4><div class="chartbox mini"><canvas id="anaHook"></canvas></div></div>
             <div class="mult"><h4>Frequência</h4><div class="chartbox mini"><canvas id="anaFreq"></canvas></div></div>
           </div>
@@ -211,14 +311,14 @@
         <div class="cardhead">
           <h3>Comparação entre anúncios</h3>
           <select id="cmpMetric" class="select">
-            <option value="roi">ROI</option>
             <option value="gasto">Gasto</option>
+            <option value="faturado">Faturado</option>
+            <option value="compras">Compras</option>
+            <option value="roi">ROAS</option>
             <option value="cpc">CPC</option>
             <option value="cpm">CPM</option>
             <option value="ctr">CTR</option>
-            <option value="compras">Compras</option>
             <option value="cpa">Custo por Compra</option>
-            <option value="faturado">Faturado</option>
             <option value="hook_rate">Hook Rate</option>
             <option value="retencao_video">Retenção</option>
             <option value="frequencia">Frequência</option>
@@ -242,14 +342,23 @@
   </main>
 </div>
 
-<!-- ===== Modal de alertas ===== -->
+<!-- ===== Modal de configurações ===== -->
 <div id="settingsModal" class="modal hidden">
   <div class="modalcard">
-    <h3>⚙ Alertas</h3>
-    <p class="loginsub">Limites que pintam as métricas de vermelho/amarelo.</p>
-    <label class="mrow">ROI mínimo <input type="text" id="s_roi" inputmode="decimal"></label>
+    <h3>⚙ Configurações</h3>
+
+    <h4 class="modalsec">Economia do projeto <span id="ecoProjName"></span></h4>
+    <p class="loginsub">Digitado uma vez. É o que transforma faturamento em <b>lucro real</b> e define o ponto de equilíbrio.</p>
+    <label class="mrow">Taxa do gateway (%) <input type="text" id="s_taxa" inputmode="decimal"></label>
+    <label class="mrow">Imposto sobre vendas (%) <input type="text" id="s_imposto" inputmode="decimal"></label>
+    <label class="mrow">Custo por venda (R$) <input type="text" id="s_custo" inputmode="decimal"></label>
+    <label class="mrow">Margem alvo (%) <input type="text" id="s_margem" inputmode="decimal"></label>
+    <p class="ecopreview" id="ecoPreview"></p>
+
+    <h4 class="modalsec">Alertas</h4>
     <label class="mrow">Perda de tráfego máx. (%) <input type="text" id="s_perda" inputmode="decimal"></label>
     <label class="mrow">CPC/CPM até % acima da média 7d <input type="text" id="s_spike" inputmode="decimal"></label>
+
     <div class="formactions">
       <button class="btn primary" id="btnSaveSettings">Salvar</button>
       <button class="btn ghost" id="btnCloseSettings">Fechar</button>
