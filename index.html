@@ -20,7 +20,7 @@
 <!-- ?v= é obrigatório: o GitHub Pages serve tudo com max-age=600 e o navegador
      reusa subrecurso sem revalidar. Sem isto, um index.html novo pode carregar
      um app.js velho — e o app.js velho morre procurando elementos que sumiram. -->
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
 </head>
@@ -50,6 +50,9 @@
 <!-- ===== App ===== -->
 <div id="app" class="app hidden">
 
+  <!-- a faixa de luz: qualquer ida ao Supabase acende esta linha -->
+  <div id="loadbar" class="loadbar" role="progressbar" aria-hidden="true"><i></i></div>
+
   <header class="topbar">
     <div class="brand">
       <div class="accretion sm"></div>
@@ -59,6 +62,20 @@
   </header>
 
   <main>
+
+    <!-- esqueleto: ocupa a tela enquanto os dados não chegam.
+         Uma tela vazia esperando a rede lê como app quebrado. -->
+    <div id="skeleton" class="skel hidden" aria-hidden="true">
+      <div class="skline w40 h12"></div>
+      <div class="skline w70 h22"></div>
+      <div class="skplate h84"></div>
+      <div class="skplate h140"></div>
+      <div class="skrow">
+        <div class="skplate h150"></div>
+        <div class="skplate h150"></div>
+      </div>
+      <div class="skplate h110"></div>
+    </div>
 
     <!-- barra do projeto ativo (discreta) -->
     <div class="projbar" id="projbar">
@@ -317,6 +334,10 @@
                 <button type="button" class="chip" data-setdata="hoje" data-alvo="a_data">Hoje</button>
               </span>
             </label>
+            <label>Campanha <span class="fgrouphint">opcional</span><input type="text" id="a_campanha" list="campNames" placeholder="nome no Gerenciador"></label>
+            <datalist id="campNames"></datalist>
+            <label>Conjunto de anúncios <span class="fgrouphint">opcional</span><input type="text" id="a_conjunto" list="conjNames" placeholder="nome no Gerenciador"></label>
+            <datalist id="conjNames"></datalist>
             <label>Anúncio<input type="text" id="a_anuncio" list="adNames" placeholder="nome do criativo" required></label>
             <datalist id="adNames"></datalist>
             <label>Status<select id="a_status"><option value="ativo">Ativo</option><option value="pausado">Pausado</option></select></label>
@@ -356,9 +377,9 @@
       </details>
 
       <div class="plate">
-        <div class="cardhead"><h3>Ranking de anúncios <span class="sub" id="rankPeriodo"></span></h3></div>
-        <div class="tablewrap"><table id="tblRanking"></table></div>
-        <div id="emptyRanking" class="hidden"></div>
+        <div class="cardhead"><h3>Estrutura da conta <span class="sub" id="rankPeriodo"></span></h3></div>
+        <div id="arvoreAds"></div>
+        <p class="chartfoot" id="arvoreFoot"></p>
       </div>
 
       <div class="plate" id="anaCard">
@@ -366,6 +387,7 @@
           <h3>Análise do anúncio <span class="sub">· histórico completo, dia a dia</span></h3>
           <select id="anaAd" class="select" aria-label="Anúncio analisado"></select>
         </div>
+        <p class="anacrumb" id="anaCaminho"></p>
 
         <div id="anaEmpty" class="hidden"></div>
 
@@ -524,6 +546,6 @@
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
-<script src="js/app.js?v=3"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>

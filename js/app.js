@@ -20,9 +20,8 @@ try { range = { ...range, ...JSON.parse(localStorage.getItem('ads_dash_range') |
 let editingId = null;
 let editingAdId = null;
 let expandedDia = null;          // data ISO do dia expandido na tabela
-let selectedAds = null;          // Set de anúncios no gráfico de comparação
+let selectedAds = null;          // Set de CHAVES de anúncio no gráfico de comparação
 let sortGeral = { key: 'data', dir: -1 };
-let sortRank = { key: 'lucro', dir: -1 };
 let sortHist = { key: 'data', dir: -1 };
 const charts = {};
 
@@ -203,6 +202,73 @@ function toast(msg, err) {
   el.textContent = msg;
   $('toasts').appendChild(el);
   setTimeout(() => el.remove(), 3200);
+}
+
+/* =================================================================
+   MOVIMENTO
+   Duas regras, e as duas vêm da mesma armadilha que já derrubou o
+   Chart.js aqui:
+   1. `prefers-reduced-motion` desliga tudo.
+   2. `document.hidden` também — requestAnimationFrame NÃO RODA em aba
+      oculta. Uma contagem animada ali congelaria no valor inicial e o
+      número exibido ficaria errado até o próximo render.
+   Movimento é enfeite; o número é o produto. Na dúvida, o número ganha.
+================================================================= */
+const semMovimento = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const podeAnimar = () => !semMovimento() && !document.hidden;
+
+/* barra de carga — a faixa de luz no topo */
+let cargasAbertas = 0;
+function iniciarCarga() { if (++cargasAbertas === 1) $('loadbar')?.classList.add('on'); }
+function terminarCarga() { if (--cargasAbertas <= 0) { cargasAbertas = 0; $('loadbar')?.classList.remove('on'); } }
+/** envolve uma promessa: a barra desce mesmo se a promessa explodir */
+async function comCarga(fn) { iniciarCarga(); try { return await fn(); } finally { terminarCarga(); } }
+
+function botaoOcupado(id, on) {
+  const b = $(id);
+  if (!b) return;
+  b.classList.toggle('ocupado', on);
+  b.disabled = on;
+}
+
+/* contagem dos números.
+   O valor de partida vem deste Map, não do DOM: o innerHTML já trocou o nó.
+   `data-k` é a chave estável do KPI; a primeira aparição conta desde o zero. */
+const FMT_ANIM = { brl: fmtBRL, num: fmtNum, dec: fmtDec, pct: fmtPct };
+const valoresAnim = new Map();
+/** @returns {string} atributos para colar no elemento que mostra o valor */
+const anima = (k, v, fmt = 'brl') => `data-k="${k}" data-fmt="${fmt}" data-v="${v == null || !isFinite(v) ? '' : v}"`;
+
+function contar(el, de, para, fmt) {
+  const t0 = performance.now(), dur = 460;
+  const passo = t => {
+    const p = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - p, 3);            // easeOutCubic
+    el.textContent = fmt(de + (para - de) * e);
+    if (p < 1) requestAnimationFrame(passo);
+    else el.textContent = fmt(para);             // fecha exato, sem resto de float
+  };
+  requestAnimationFrame(passo);
+}
+function animarNumeros(root) {
+  (root || document).querySelectorAll('[data-k][data-v]').forEach(el => {
+    const k = el.dataset.k;
+    const fmt = FMT_ANIM[el.dataset.fmt] || fmtNum;
+    if (el.dataset.v === '') { valoresAnim.delete(k); return; }   // "—": não há o que contar
+    const alvo = Number(el.dataset.v);
+    const de = valoresAnim.has(k) ? valoresAnim.get(k) : 0;
+    valoresAnim.set(k, alvo);
+    if (!podeAnimar() || de === alvo) { el.textContent = fmt(alvo); return; }
+    contar(el, de, alvo, fmt);
+  });
+}
+
+/** entrada escalonada dos cartões da aba */
+function revelar(painel) {
+  if (!painel || semMovimento()) return;
+  painel.classList.remove('entrando');
+  void painel.offsetWidth;                       // reflow: sem isso a animação não reinicia
+  painel.classList.add('entrando');
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -540,10 +606,11 @@ function deltaHtml(cur, prev, upGood, fmt) {
   else if (upGood === false) cls = up ? 'down' : 'up';
   return `<div class="kdelta ${cls}">${up ? '▲' : '▼'} ${nf2.format(Math.abs(pct))}%</div>`;
 }
-function kpiCard(label, value, sub, cls, alert, extra) {
+/** @param {string} [anim] atributos de `anima()`; sem eles o valor entra estático */
+function kpiCard(label, value, sub, cls, alert, extra, anim) {
   return `<div class="kpi${alert ? ' alert' : ''}">
     <div class="klabel">${label}</div>
-    <div class="kvalue ${cls || ''}">${value}</div>
+    <div class="kvalue ${cls || ''}" ${anim || ''}>${value}</div>
     ${sub || '<div class="kdelta">—</div>'}
     ${extra || ''}
   </div>`;
@@ -577,22 +644,23 @@ function bandKpis(t, tPrev, nivel) {
 
   if (nivel === 'dia') {
     return [
-      kpiCard('Lucro', fmtBRL(t.lucro), deltaHtml(t.lucro, tPrev?.lucro, true), lucroCls, t.lucro != null && t.lucro < 0),
-      kpiCard('Gasto', fmtBRL(t.gasto), deltaHtml(t.gasto, tPrev?.gasto, null)),
-      kpiCard('Faturado', fmtBRL(t.faturado), deltaHtml(t.faturado, tPrev?.faturado, true)),
-      kpiCard('Compras', fmtNum(t.compra), deltaHtml(t.compra, tPrev?.compra, true)),
-      kpiCard('Cliques', fmtNum(t.cliques), deltaHtml(t.cliques, tPrev?.cliques, true)),
+      kpiCard('Lucro', fmtBRL(t.lucro), deltaHtml(t.lucro, tPrev?.lucro, true), lucroCls, t.lucro != null && t.lucro < 0, '', anima('d:lucro', t.lucro)),
+      kpiCard('Gasto', fmtBRL(t.gasto), deltaHtml(t.gasto, tPrev?.gasto, null), '', false, '', anima('d:gasto', t.gasto)),
+      kpiCard('Faturado', fmtBRL(t.faturado), deltaHtml(t.faturado, tPrev?.faturado, true), '', false, '', anima('d:fat', t.faturado)),
+      kpiCard('Compras', fmtNum(t.compra), deltaHtml(t.compra, tPrev?.compra, true), '', false, '', anima('d:comp', t.compra, 'num')),
+      kpiCard('Cliques', fmtNum(t.cliques), deltaHtml(t.cliques, tPrev?.cliques, true), '', false, '', anima('d:cliq', t.cliques, 'num')),
     ].join('');
   }
 
   const margemCls = t.margem == null ? '' : (t.margem >= 0 ? 'good' : 'bad');
   const roasCls = t.roas == null || be == null ? '' : (t.roas >= be ? 'good' : 'bad');
+  const receita = temEconomia() ? t.liquido : t.faturado;
   return [
-    kpiCard('Lucro', fmtBRL(t.lucro), deltaHtml(t.lucro, tPrev?.lucro, true), lucroCls, t.lucro != null && t.lucro < 0),
-    kpiCard('Margem', fmtPct(t.margem), deltaHtml(t.margem, tPrev?.margem, true), margemCls),
-    kpiCard('ROAS', t.roas == null ? '—' : fmtDec(t.roas), deltaHtml(t.roas, tPrev?.roas, true), roasCls, false, reguaHorizonte(t.roas)),
-    kpiCard(temEconomia() ? 'Receita líquida' : 'Faturamento', fmtBRL(temEconomia() ? t.liquido : t.faturado), deltaHtml(temEconomia() ? t.liquido : t.faturado, temEconomia() ? tPrev?.liquido : tPrev?.faturado, true)),
-    kpiCard('Gasto', fmtBRL(t.gasto), deltaHtml(t.gasto, tPrev?.gasto, null)),
+    kpiCard('Lucro', fmtBRL(t.lucro), deltaHtml(t.lucro, tPrev?.lucro, true), lucroCls, t.lucro != null && t.lucro < 0, '', anima('p:lucro', t.lucro)),
+    kpiCard('Margem', fmtPct(t.margem), deltaHtml(t.margem, tPrev?.margem, true), margemCls, false, '', anima('p:margem', t.margem, 'pct')),
+    kpiCard('ROAS', t.roas == null ? '—' : fmtDec(t.roas), deltaHtml(t.roas, tPrev?.roas, true), roasCls, false, reguaHorizonte(t.roas), anima('p:roas', t.roas, 'dec')),
+    kpiCard(temEconomia() ? 'Receita líquida' : 'Faturamento', fmtBRL(receita), deltaHtml(receita, temEconomia() ? tPrev?.liquido : tPrev?.faturado, true), '', false, '', anima('p:receita', receita)),
+    kpiCard('Gasto', fmtBRL(t.gasto), deltaHtml(t.gasto, tPrev?.gasto, null), '', false, '', anima('p:gasto', t.gasto)),
   ].join('');
 }
 
@@ -1016,12 +1084,12 @@ function renderMassa() {
 function renderRetencao() {
   const box = $('boxRetencao');
   if (!box) return;
-  const dados = adNames().map(n => {
-    const dias = adRows.filter(a => a.anuncio === n);
+  const dados = adKeys().map(k => {
+    const dias = adRows.filter(a => adKey(a) === k);
     const hooks = dias.map(a => a.hook_rate).filter(v => v != null);
     const rets = dias.map(a => a.retencao_video).filter(v => v != null);
     if (!hooks.length && !rets.length) return null;
-    return { n, hook: hooks.length ? avg(hooks) : null, ret: rets.length ? avg(rets) : null };
+    return { n: adRotuloUnico(k), hook: hooks.length ? avg(hooks) : null, ret: rets.length ? avg(rets) : null };
   }).filter(Boolean).sort((a, b) => num(b.hook) - num(a.hook));
 
   if (!dados.length) {
@@ -1086,7 +1154,7 @@ function comandos() {
     { ico: '☾', t: 'Configurar a economia', sub: 'Conta', run: () => acao('economia') },
     { ico: '⬇', t: 'Exportar dias (CSV)', sub: 'Geral', run: exportCsvGeral },
     { ico: '⬇', t: 'Exportar anúncios (CSV)', sub: 'Anúncios', run: exportCsvAds },
-    ...adNames().map(n => ({ ico: '◉', t: `Analisar ${n}`, sub: 'Anúncio', run: () => irParaAnalise(n) })),
+    ...adKeys().map(k => ({ ico: '◉', t: `Analisar ${adRotuloUnico(k)}`, sub: adCaminho(k) || 'Anúncio', run: () => irParaAnalise(k) })),
   ];
 }
 
@@ -1167,13 +1235,13 @@ function expandDiaHtml(r) {
   const cobertura = num(r.gasto) > 0 ? (gastoAds / num(r.gasto)) * 100 : null;
 
   const linhas = doDia.map(a => `<tr>
-    <td>${esc(a.anuncio)}</td>
+    <td>${esc(a.anuncio)}${adCaminho(adKey(a)) ? `<small class="tsub">${esc(adCaminho(adKey(a)))}</small>` : ''}</td>
     <td>${fmtBRL(a.gasto)}</td>
     <td>${fmtBRL(a.faturado)}</td>
     <td class="${(() => { const v = adRoasOf(a), be = breakevenRoas(); return v == null || be == null ? '' : (v >= be ? 'good' : 'bad'); })()}">${adRoasOf(a) == null ? '—' : fmtDec(adRoasOf(a))}</td>
     <td>${fmtNum(a.compras)}</td>
     <td class="${adLucroOf(a) == null ? 'dim' : (adLucroOf(a) >= 0 ? 'good' : 'bad')}">${fmtBRL(adLucroOf(a))}</td>
-    <td><button class="rowbtn txt" data-ana="${esc(a.anuncio)}" title="Analisar este anúncio">Analisar →</button></td>
+    <td><button class="rowbtn txt" data-ana="${esc(adKey(a))}" title="Analisar este anúncio">Analisar →</button></td>
   </tr>`).join('');
 
   return `<div class="diabox">
@@ -1197,7 +1265,7 @@ function expandDiaHtml(r) {
 function drawDiaChart(diaISO) {
   const doDia = adRows.filter(a => a.data === diaISO).sort((a, b) => num(b.gasto) - num(a.gasto));
   if (!doDia.length || !$('chDiaAds')) return;
-  let itens = doDia.map(a => ({ l: a.anuncio, v: num(a.gasto) }));
+  let itens = doDia.map(a => ({ l: adRotuloUnico(adKey(a)), v: num(a.gasto) }));
   if (itens.length > 8) {
     const resto = itens.slice(8).reduce((s, x) => s + x.v, 0);
     itens = itens.slice(0, 8).concat([{ l: 'Outros', v: resto }]);
@@ -1289,9 +1357,9 @@ function ajustarDiabox() {
   box.style.width = wrap.clientWidth + 'px';
 }
 
-function irParaAnalise(nome) {
+function irParaAnalise(key) {
   trocarAba('anuncios');
-  $('anaAd').value = nome;
+  $('anaAd').value = key;
   renderAnalise();
   $('anaCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1347,7 +1415,7 @@ function resetFormGeral() {
 function collectGeral() {
   return {
     data: $('f_data').value,
-    campanha: projeto,
+    projeto: projeto,
     user_id: uid,
     gasto: parseNum($('f_gasto').value),
     faturado: parseNum($('f_faturado').value),
@@ -1422,7 +1490,7 @@ async function saveGeral(e) {
   e.preventDefault();
   const rec = collectGeral();
   if (!rec.data) return toast('Escolha a data.', true);
-  $('btnSalvarGeral').disabled = true;
+  botaoOcupado('btnSalvarGeral', true);
   try {
     if (editingId) {
       const { error } = await db.from('ads_metricas_diarias').update(rec).eq('id', editingId);
@@ -1434,8 +1502,8 @@ async function saveGeral(e) {
         titulo: 'Sobrescrever o dia?',
         texto: `Já existe lançamento em ${fmtData(rec.data)}.`,
         ok: 'Sobrescrever',
-      })) { $('btnSalvarGeral').disabled = false; return; }
-      const { error } = await db.from('ads_metricas_diarias').upsert(rec, { onConflict: 'user_id,data,campanha' });
+      })) { botaoOcupado('btnSalvarGeral', false); return; }
+      const { error } = await db.from('ads_metricas_diarias').upsert(rec, { onConflict: 'user_id,data,projeto' });
       if (error) throw error;
       toast('Dia lançado ✓');
     }
@@ -1444,7 +1512,7 @@ async function saveGeral(e) {
   } catch (err) {
     toast('Erro ao salvar: ' + (err.message || err), true);
   }
-  $('btnSalvarGeral').disabled = false;
+  botaoOcupado('btnSalvarGeral', false);
 }
 async function delGeral(id) {
   const r = rows.find(x => x.id === id);
@@ -1459,47 +1527,59 @@ async function delGeral(id) {
 }
 
 /* =================================================================
-   ANÚNCIOS
+   ANÚNCIOS — a hierarquia do Meta: Campanha › Conjunto › Anúncio
+
+   A identidade de um criativo NÃO é o nome dele: é o caminho inteiro.
+   O mesmo vídeo pode rodar em dois conjuntos, e ali são duas linhas
+   diferentes no mesmo dia (a unique do banco inclui os três).
+   `adKey()` é essa identidade em toda parte; só o rótulo mostra o nome.
 ================================================================= */
+const SEP = '␟';   // separador que não aparece em nome de anúncio
+const adKey = r => [r.campanha || '', r.conjunto || '', r.anuncio].join(SEP);
+function adParts(k) { const [campanha, conjunto, anuncio] = String(k).split(SEP); return { campanha, conjunto, anuncio }; }
+const adRotulo = k => adParts(k).anuncio;
+function adCaminho(k) { const p = adParts(k); return [p.campanha, p.conjunto].filter(Boolean).join(' › '); }
+const SEM_CAMP = 'Sem campanha';
+const SEM_CONJ = 'Sem conjunto';
+
+function adKeys() { return [...new Set(adRows.map(adKey))]; }
+function adNames() { return [...new Set(adRows.map(r => r.anuncio))]; }
+function campNames() { return [...new Set(adRows.map(r => r.campanha).filter(Boolean))]; }
+function conjNames() { return [...new Set(adRows.map(r => r.conjunto).filter(Boolean))]; }
+
 function adColorMap() {
-  const order = [];
-  for (const r of adRows) if (!order.includes(r.anuncio)) order.push(r.anuncio);
   const map = {};
-  order.forEach((name, i) => { map[name] = corDaSerie(i); });
+  adKeys().forEach((k, i) => { map[k] = corDaSerie(i); });
   return map;
 }
-function adNames() { return [...new Set(adRows.map(r => r.anuncio))]; }
+/** rótulo curto, desambiguado só quando o mesmo nome existe em dois caminhos */
+function adRotuloUnico(k) {
+  const p = adParts(k);
+  const homonimos = adKeys().filter(x => adParts(x).anuncio === p.anuncio);
+  if (homonimos.length < 2) return p.anuncio;
+  return `${p.anuncio} · ${p.conjunto || SEM_CONJ}`;
+}
 
 function renderAdDatalist() {
   $('adNames').innerHTML = adNames().map(n => `<option value="${esc(n)}">`).join('');
+  $('campNames').innerHTML = campNames().map(n => `<option value="${esc(n)}">`).join('');
+  $('conjNames').innerHTML = conjNames().map(n => `<option value="${esc(n)}">`).join('');
   const sel = $('histAdFilter');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">Todos os anúncios</option>' + adNames().map(n => `<option value="${esc(n)}"${n === cur ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  const keys = adKeys();
+  sel.innerHTML = '<option value="">Todos os anúncios</option>' +
+    keys.map(k => `<option value="${esc(k)}"${k === cur ? ' selected' : ''}>${esc(adRotuloUnico(k))}</option>`).join('');
 }
 
 const MIN_CONV = 10;   // abaixo disso, ROAS de criativo é ruído
-
-const COLS_RANK = [
-  { key: 'anuncio', label: 'Anúncio', get: a => a.anuncio.toLowerCase(), fmt: a => `<button class="adlink" data-ana="${esc(a.anuncio)}" title="Analisar este anúncio"><span class="dot" style="background:${a.color}"></span>${esc(a.anuncio)}</button>${a.compras < MIN_CONV ? '<span class="badge small">amostra pequena</span>' : ''}` },
-  { key: 'lucro', label: 'Lucro', get: a => a.lucro, fmt: a => fmtBRL(a.lucro), cls: a => a.lucro == null ? '' : (a.lucro >= 0 ? 'good' : 'bad') },
-  { key: 'status', label: 'Status', get: a => a.status, fmt: a => `<span class="badge ${a.status}">${a.status}</span>` },
-  { key: 'gasto', label: 'Gasto', get: a => a.gasto, fmt: a => fmtBRL(a.gasto) },
-  { key: 'faturado', label: 'Faturado', get: a => a.faturado, fmt: a => fmtBRL(a.faturado) },
-  { key: 'compras', label: 'Compras', get: a => a.compras, fmt: a => fmtNum(a.compras) },
-  { key: 'roas', label: 'ROAS', get: a => a.roas, fmt: a => a.roas == null ? '—' : fmtDec(a.roas), cls: a => { const be = breakevenRoas(); return a.roas == null || be == null ? '' : (a.roas >= be ? 'good' : 'bad'); } },
-  { key: 'cpa', label: 'Custo/Compra', get: a => a.cpa, fmt: a => fmtBRL(a.cpa) },
-  { key: 'ctr', label: 'CTR méd.', get: a => a.ctr, fmt: a => fmtPct(a.ctr) },
-  { key: 'cpc', label: 'CPC méd.', get: a => a.cpc, fmt: a => fmtBRL(a.cpc) },
-  { key: 'hook', label: 'Hook méd.', get: a => a.hook, fmt: a => fmtPct(a.hook) },
-  { key: 'dias', label: 'Dias', get: a => a.dias, fmt: a => fmtNum(a.dias) },
-];
 
 function aggregateAds(list) {
   const src = list || filterByPeriod(adRows);
   const colors = adColorMap();
   const byAd = {};
   for (const r of src) {
-    const a = byAd[r.anuncio] || (byAd[r.anuncio] = { anuncio: r.anuncio, color: colors[r.anuncio], gasto: 0, faturado: 0, compras: 0, ctrs: [], cpcs: [], hooks: [], dias: 0, lastData: '', status: 'ativo' });
+    const k = adKey(r);
+    const a = byAd[k] || (byAd[k] = { key: k, anuncio: r.anuncio, campanha: r.campanha || '', conjunto: r.conjunto || '', color: colors[k], gasto: 0, faturado: 0, compras: 0, ctrs: [], cpcs: [], hooks: [], dias: 0, lastData: '', status: 'ativo' });
     a.dias++;
     a.gasto += num(r.gasto); a.faturado += num(r.faturado); a.compras += num(r.compras);
     if (r.ctr != null) a.ctrs.push(Number(r.ctr));
@@ -1517,31 +1597,183 @@ function aggregateAds(list) {
   }));
 }
 
-function renderRanking() {
-  const tbl = $('tblRanking');
-  const ags = aggregateAds();
+/* =================================================================
+   ÁRVORE Campanha › Conjunto › Anúncio
+
+   O ranking plano mentia sobre a estrutura da conta: escalar orçamento
+   é decisão de CONJUNTO, cortar criativo é decisão de ANÚNCIO, e matar
+   um público é decisão de CAMPANHA. Cada nível tem seu próprio número.
+   O veredito só existe no anúncio; acima dele vira contagem.
+================================================================= */
+const PRIO_VEREDITO = { 'Cortar': 0, 'Testar novo criativo': 1, 'Escalar': 2, 'Manter': 3, 'Coletando dados': 4 };
+let arvoreAberta = null;   // Set de ids de nó abertos
+
+function agregaAds(rows) {
+  let gasto = 0, faturado = 0, compras = 0, cliques = 0;
+  for (const r of rows) { gasto += num(r.gasto); faturado += num(r.faturado); compras += num(r.compras); cliques += num(r.cliques); }
+  return {
+    gasto, faturado, compras, cliques,
+    lucro: faturado * (1 - dedPct() / 100) - gasto - num(eco.custo_por_venda) * compras,
+    roas: gasto > 0 ? faturado / gasto : null,
+    cpa: compras > 0 ? gasto / compras : null,
+  };
+}
+
+/** números de um nó, na mesma ordem em todos os níveis */
+function numsArvore(t) {
+  const be = breakevenRoas();
+  const roasCls = t.roas == null || be == null ? 'dim' : (t.roas >= be ? 'good' : 'bad');
+  const lucroCls = t.lucro >= 0 ? 'good' : 'bad';
+  return `<span class="tn"><i>Gasto</i><b>${fmtBRL(t.gasto)}</b></span>
+    <span class="tn"><i>ROAS</i><b class="${roasCls}">${t.roas == null ? '—' : fmtDec(t.roas)}</b></span>
+    <span class="tn"><i>Compras</i><b>${fmtNum(t.compras)}</b></span>
+    <span class="tn"><i>Lucro</i><b class="${lucroCls}">${fmtBRL(t.lucro)}</b></span>`;
+}
+
+/** "2 cortar · 1 manter" — o resumo dos vereditos abaixo deste nó */
+function resumoVereditos(diags) {
+  const cont = {};
+  for (const d of diags) cont[d.verdict] = (cont[d.verdict] || 0) + 1;
+  return Object.entries(cont)
+    .sort((a, b) => (PRIO_VEREDITO[a[0]] ?? 9) - (PRIO_VEREDITO[b[0]] ?? 9))
+    .map(([v, n]) => {
+      const cls = v === 'Cortar' ? 'bad' : v === 'Testar novo criativo' ? 'warn' : v === 'Coletando dados' ? 'dim' : 'good';
+      return `<span class="tchip ${cls}">${n} ${v.toLowerCase()}</span>`;
+    }).join('');
+}
+
+function renderArvore() {
+  const host = $('arvoreAds');
+  if (!host) return;
+  const list = filterByPeriod(adRows);
   $('rankPeriodo').textContent = '· ' + periodLabel();
-  $('emptyRanking').classList.toggle('hidden', ags.length > 0);
-  if (!ags.length) {
-    tbl.innerHTML = '';
-    $('emptyRanking').innerHTML = noSignal(
+
+  if (!list.length) {
+    host.innerHTML = noSignal(
       'Nenhum criativo em órbita',
-      'Lance os criativos de um dia e o Ergosphere passa a dizer qual cortar, qual manter e qual escalar.',
+      'Lance os criativos de um dia — com a campanha e o conjunto — e o Ergosphere passa a dizer o que cortar, o que manter e o que escalar, em cada nível da conta.',
       { acao: 'lancar-anuncio', txt: 'Lançar anúncio' });
-    ligarAcoes($('emptyRanking'));
+    ligarAcoes(host);
     return;
   }
 
-  renderSortableTable(tbl, COLS_RANK, ags, sortRank, {
-    extraHead: [''],
-    onSort: renderRanking,
-    rowExtra: a => `<td><div class="rowbtns">
-      <button class="rowbtn del" data-delad="${esc(a.anuncio)}" title="Excluir o anúncio e todos os dias dele">🗑</button>
-    </div></td>`,
-  });
+  /* agrupa em três níveis, preservando as linhas cruas de cada folha */
+  const camps = new Map();
+  for (const r of list) {
+    const c = r.campanha || '', j = r.conjunto || '', k = adKey(r);
+    if (!camps.has(c)) camps.set(c, new Map());
+    const conjs = camps.get(c);
+    if (!conjs.has(j)) conjs.set(j, new Map());
+    const ads = conjs.get(j);
+    if (!ads.has(k)) ads.set(k, []);
+    ads.get(k).push(r);
+  }
 
-  tbl.querySelectorAll('[data-delad]').forEach(b => b.addEventListener('click', () => excluirAnuncio(b.dataset.delad)));
-  tbl.querySelectorAll('[data-ana]').forEach(b => b.addEventListener('click', () => irParaAnalise(b.dataset.ana)));
+  /* veredito por anúncio, uma vez só */
+  const diagDe = new Map();
+  for (const conjs of camps.values())
+    for (const ads of conjs.values())
+      for (const [k, dias] of ads)
+        diagDe.set(k, diagnose([...dias].sort((a, b) => a.data.localeCompare(b.data))));
+
+  /* primeira visita: abre tudo se for pequeno; senão só a campanha que mais gasta */
+  if (arvoreAberta === null) {
+    arvoreAberta = new Set();
+    const totalAds = [...camps.values()].reduce((s, cj) => s + [...cj.values()].reduce((x, a) => x + a.size, 0), 0);
+    if (totalAds <= 15) {
+      for (const [c, conjs] of camps) { arvoreAberta.add('c' + SEP + c); for (const j of conjs.keys()) arvoreAberta.add('j' + SEP + c + SEP + j); }
+    } else {
+      const maior = [...camps].sort((a, b) => agregaAds([...b[1].values()].flatMap(m => [...m.values()].flat())).gasto - agregaAds([...a[1].values()].flatMap(m => [...m.values()].flat())).gasto)[0];
+      if (maior) arvoreAberta.add('c' + SEP + maior[0]);
+    }
+  }
+
+  const colors = adColorMap();
+  const linhas = [];
+  const porGasto = (a, b) => b.t.gasto - a.t.gasto;
+
+  const campsOrd = [...camps].map(([c, conjs]) => {
+    const rowsC = [...conjs.values()].flatMap(m => [...m.values()].flat());
+    return { c, conjs, t: agregaAds(rowsC) };
+  }).sort(porGasto);
+
+  for (const { c, conjs, t: tc } of campsOrd) {
+    const idC = 'c' + SEP + c;
+    const abertoC = arvoreAberta.has(idC);
+    const diagsC = [...conjs.values()].flatMap(m => [...m.keys()]).map(k => diagDe.get(k)).filter(Boolean);
+    const nAds = [...conjs.values()].reduce((s, m) => s + m.size, 0);
+
+    linhas.push(`<div class="treerow lvl1${abertoC ? ' aberto' : ''}" data-no="${esc(idC)}" role="button" tabindex="0"
+        aria-expanded="${abertoC}">
+      <span class="tcaret">▸</span>
+      <span class="tnome">
+        <b>${esc(c || SEM_CAMP)}</b>
+        <small>${nAds} ${nAds === 1 ? 'anúncio' : 'anúncios'} · ${conjs.size} ${conjs.size === 1 ? 'conjunto' : 'conjuntos'}</small>
+      </span>
+      <span class="tchips">${resumoVereditos(diagsC)}</span>
+      <span class="tnums">${numsArvore(tc)}</span>
+    </div>`);
+    if (!abertoC) continue;
+
+    const conjsOrd = [...conjs].map(([j, ads]) => ({ j, ads, t: agregaAds([...ads.values()].flat()) })).sort(porGasto);
+    for (const { j, ads, t: tj } of conjsOrd) {
+      const idJ = 'j' + SEP + c + SEP + j;
+      const abertoJ = arvoreAberta.has(idJ);
+      const diagsJ = [...ads.keys()].map(k => diagDe.get(k)).filter(Boolean);
+
+      linhas.push(`<div class="treerow lvl2${abertoJ ? ' aberto' : ''}" data-no="${esc(idJ)}" role="button" tabindex="0"
+          aria-expanded="${abertoJ}">
+        <span class="tcaret">▸</span>
+        <span class="tnome">
+          <b>${esc(j || SEM_CONJ)}</b>
+          <small>${ads.size} ${ads.size === 1 ? 'anúncio' : 'anúncios'}${tj.cpa != null ? ` · custo/compra ${fmtBRL(tj.cpa)}` : ''}</small>
+        </span>
+        <span class="tchips">${resumoVereditos(diagsJ)}</span>
+        <span class="tnums">${numsArvore(tj)}</span>
+      </div>`);
+      if (!abertoJ) continue;
+
+      const adsOrd = [...ads].map(([k, dias]) => ({ k, dias, t: agregaAds(dias) })).sort((a, b) => b.t.lucro - a.t.lucro);
+      for (const { k, dias, t: ta } of adsOrd) {
+        const d = diagDe.get(k);
+        const cls = d.vClass;
+        const status = [...dias].sort((a, b) => a.data.localeCompare(b.data)).slice(-1)[0].status;
+        linhas.push(`<div class="treerow lvl3" data-ad="${esc(k)}">
+          <span class="tdot" style="background:${colors[k]}"></span>
+          <span class="tnome">
+            <b>${esc(adParts(k).anuncio)}</b>
+            <small>${dias.length} ${dias.length === 1 ? 'dia' : 'dias'}${status === 'pausado' ? ' · pausado' : ''}${ta.compras < MIN_CONV && ta.compras > 0 ? ' · amostra pequena' : ''}</small>
+          </span>
+          <span class="tchips"><span class="verdict ${cls}">${d.verdict}</span></span>
+          <span class="tnums">${numsArvore(ta)}</span>
+          <span class="tacoes">
+            <button class="rowbtn txt" data-ana="${esc(k)}">Analisar →</button>
+            <button class="rowbtn del" data-delad="${esc(k)}" title="Excluir este anúncio e todos os dias dele">🗑</button>
+          </span>
+        </div>`);
+      }
+    }
+  }
+
+  host.innerHTML = `<div class="tree">${linhas.join('')}</div>`;
+
+  const alterna = el => {
+    const id = el.dataset.no;
+    if (arvoreAberta.has(id)) arvoreAberta.delete(id); else arvoreAberta.add(id);
+    navigator.vibrate?.(4);
+    renderArvore();
+  };
+  host.querySelectorAll('.treerow[data-no]').forEach(el => {
+    el.addEventListener('click', e => { if (!e.target.closest('button')) alterna(el); });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alterna(el); } });
+  });
+  host.querySelectorAll('[data-ana]').forEach(b => b.addEventListener('click', () => irParaAnalise(b.dataset.ana)));
+  host.querySelectorAll('[data-delad]').forEach(b => b.addEventListener('click', () => excluirAnuncio(b.dataset.delad)));
+
+  const semHierarquia = list.every(r => !r.campanha && !r.conjunto);
+  $('arvoreFoot').innerHTML = semHierarquia
+    ? 'Seus criativos ainda não têm campanha nem conjunto. Preencha os dois campos ao lançar — ou use <b>Colar criativos do Meta</b>, que traz a hierarquia pronta do Gerenciador.'
+    : 'Escalar orçamento é decisão de <b>conjunto</b>. Cortar criativo é decisão de <b>anúncio</b>. Cada nível tem o número que a decisão dele pede.';
 }
 
 /* =================================================================
@@ -1759,16 +1991,17 @@ function renderAnaTable(days) {
 }
 
 function renderAnalise() {
-  const names = adNames();
+  const keys = adKeys();
   const sel = $('anaAd');
-  const cur = sel.value && names.includes(sel.value) ? sel.value : names[0];
-  sel.innerHTML = names.map(n => `<option value="${esc(n)}"${n === cur ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  const cur = sel.value && keys.includes(sel.value) ? sel.value : keys[0];
+  sel.innerHTML = keys.map(k => `<option value="${esc(k)}"${k === cur ? ' selected' : ''}>${esc(adRotuloUnico(k))}</option>`).join('');
 
-  const has = names.length > 0;
+  const has = keys.length > 0;
   $('anaEmpty').classList.toggle('hidden', has);
   $('anaBody').classList.toggle('hidden', !has);
   $('anaAd').classList.toggle('hidden', !has);
   if (!has) {
+    $('anaCaminho').textContent = '';
     $('anaEmpty').innerHTML = noSignal('Sem sinal',
       'Lance criativos para ver a evolução de cada um, dia a dia, com veredito automático.',
       { acao: 'lancar-anuncio', txt: 'Lançar anúncio' });
@@ -1776,7 +2009,12 @@ function renderAnalise() {
     return;
   }
 
-  const days = adRows.filter(r => r.anuncio === cur).sort((a, b) => a.data.localeCompare(b.data));
+  const caminho = adCaminho(cur);
+  $('anaCaminho').innerHTML = caminho
+    ? `<span class="crumb">${esc(caminho)}</span> <span class="crumbsep">›</span> <b>${esc(adParts(cur).anuncio)}</b>`
+    : `<span class="crumb">${SEM_CAMP} › ${SEM_CONJ}</span> <span class="crumbsep">›</span> <b>${esc(adParts(cur).anuncio)}</b>`;
+
+  const days = adRows.filter(r => adKey(r) === cur).sort((a, b) => a.data.localeCompare(b.data));
   const d = diagnose(days);
   renderAnaKpis(d, days);
   renderAnaDiag(d);
@@ -1792,29 +2030,29 @@ function cmpValue(r, metric) {
 }
 function renderCompare() {
   const list = filterByPeriod(adRows);
-  const names = adNames();
+  const keys = adKeys();
   const colors = adColorMap();
 
   if (selectedAds === null) {
     const ags = aggregateAds().sort((a, b) => b.gasto - a.gasto);
-    selectedAds = new Set(ags.slice(0, 4).map(a => a.anuncio));
+    selectedAds = new Set(ags.slice(0, 4).map(a => a.key));
   }
-  for (const n of [...selectedAds]) if (!names.includes(n)) selectedAds.delete(n);
+  for (const k of [...selectedAds]) if (!keys.includes(k)) selectedAds.delete(k);
 
-  $('cmpAds').innerHTML = names.map(n =>
-    `<button class="chip${selectedAds.has(n) ? ' active' : ''}" data-ad="${esc(n)}"><span class="dot" style="background:${colors[n]}"></span>${esc(n)}</button>`
+  $('cmpAds').innerHTML = keys.map(k =>
+    `<button class="chip${selectedAds.has(k) ? ' active' : ''}" data-ad="${esc(k)}" title="${esc(adCaminho(k) || SEM_CAMP)}"><span class="dot" style="background:${colors[k]}"></span>${esc(adRotuloUnico(k))}</button>`
   ).join('') || '<span class="empty" style="padding:0">Lance anúncios para comparar.</span>';
   $('cmpAds').querySelectorAll('[data-ad]').forEach(b => b.addEventListener('click', () => {
-    const n = b.dataset.ad;
-    if (selectedAds.has(n)) selectedAds.delete(n); else selectedAds.add(n);
+    const k = b.dataset.ad;
+    if (selectedAds.has(k)) selectedAds.delete(k); else selectedAds.add(k);
     renderCompare();
   }));
 
   const metric = $('cmpMetric').value;
   const dates = [...new Set(list.map(r => r.data))].sort();
-  const datasets = names.filter(n => selectedAds.has(n)).map(n => {
-    const byDate = new Map(list.filter(r => r.anuncio === n).map(r => [r.data, cmpValue(r, metric)]));
-    return lineDataset(n, dates.map(d => byDate.has(d) ? byDate.get(d) : null), colors[n], false, false);
+  const datasets = keys.filter(k => selectedAds.has(k)).map(k => {
+    const byDate = new Map(list.filter(r => adKey(r) === k).map(r => [r.data, cmpValue(r, metric)]));
+    return lineDataset(adRotuloUnico(k), dates.map(d => byDate.has(d) ? byDate.get(d) : null), colors[k], false, false);
   });
 
   const isMoney = ['gasto', 'cpc', 'cpm', 'cpa', 'faturado'].includes(metric);
@@ -1838,6 +2076,8 @@ function renderCompare() {
 const COLS_HIST = [
   { key: 'data', label: 'Data', get: r => r.data, fmt: r => fmtData(r.data) },
   { key: 'anuncio', label: 'Anúncio', get: r => r.anuncio.toLowerCase(), fmt: r => esc(r.anuncio) },
+  { key: 'campanha', label: 'Campanha', get: r => (r.campanha || '').toLowerCase(), fmt: r => r.campanha ? esc(r.campanha) : '—' },
+  { key: 'conjunto', label: 'Conjunto', get: r => (r.conjunto || '').toLowerCase(), fmt: r => r.conjunto ? esc(r.conjunto) : '—' },
   { key: 'status', label: 'Status', get: r => r.status, fmt: r => `<span class="badge ${r.status}">${r.status}</span>` },
   { key: 'gasto', label: 'Gasto', get: r => r.gasto, fmt: r => fmtBRL(r.gasto) },
   { key: 'faturado', label: 'Faturado', get: r => r.faturado, fmt: r => fmtBRL(r.faturado) },
@@ -1858,7 +2098,7 @@ function renderAdsHist() {
   const tbl = $('tblAdsHist');
   let list = filterByPeriod(adRows);
   const filter = $('histAdFilter').value;
-  if (filter) list = list.filter(r => r.anuncio === filter);
+  if (filter) list = list.filter(r => adKey(r) === filter);
   $('emptyAdsHist').classList.toggle('hidden', list.length > 0);
   if (!list.length) {
     tbl.innerHTML = '';
@@ -1887,6 +2127,8 @@ function startEditAd(id) {
   if (!r) return;
   editingAdId = id;
   $('a_data').value = r.data;
+  $('a_campanha').value = r.campanha || '';
+  $('a_conjunto').value = r.conjunto || '';
   $('a_anuncio').value = r.anuncio;
   $('a_status').value = r.status;
   $('a_gasto').value = numToInput(r.gasto);
@@ -1913,10 +2155,17 @@ function startEditAd(id) {
  * @param {string} [manterData] mantém esta data no form em vez de voltar pra hoje.
  * Lançar 11 criativos do mesmo dia não pode custar 11 redigitações de data.
  */
-function resetFormAds(manterData) {
+/**
+ * @param {string} [manterData] mantém esta data no form em vez de voltar pra hoje.
+ * @param {{campanha?:string,conjunto?:string}} [manterHier] o próximo criativo quase
+ *   sempre é do mesmo conjunto — redigitar a hierarquia a cada linha é o mesmo
+ *   erro que redigitar a data.
+ */
+function resetFormAds(manterData, manterHier) {
   editingAdId = null;
   $('formAds').reset();
   $('a_data').value = manterData || todayISO();
+  if (manterHier) { $('a_campanha').value = manterHier.campanha || ''; $('a_conjunto').value = manterHier.conjunto || ''; }
   $('editTagAds').classList.add('hidden');
   $('btnCancelAds').classList.add('hidden');
   $('btnSalvarAds').textContent = 'Salvar anúncio';
@@ -1926,8 +2175,10 @@ function collectAds() {
   return {
     data: $('a_data').value,
     anuncio: $('a_anuncio').value.trim(),
+    campanha: $('a_campanha').value.trim(),
+    conjunto: $('a_conjunto').value.trim(),
     status: $('a_status').value,
-    campanha: projeto,
+    projeto: projeto,
     user_id: uid,
     gasto: parseNum($('a_gasto').value),
     cpm: parseNum($('a_cpm').value),
@@ -1958,31 +2209,32 @@ async function saveAd(e) {
   if (!rec.data) return toast('Escolha a data.', true);
   if (!rec.anuncio) return toast('Dê um nome ao anúncio.', true);
   const eraEdicao = !!editingAdId;
-  $('btnSalvarAds').disabled = true;
+  botaoOcupado('btnSalvarAds', true);
   try {
     if (editingAdId) {
       const { error } = await db.from('ads_anuncios_diarios').update(rec).eq('id', editingAdId);
       if (error) throw error;
       toast('Anúncio atualizado ✓');
     } else {
-      const dup = adRows.find(r => r.data === rec.data && r.anuncio === rec.anuncio);
+      const dup = adRows.find(r => r.data === rec.data && adKey(r) === adKey(rec));
       if (dup && !await confirmar({
         titulo: 'Sobrescrever lançamento?',
-        texto: `"${rec.anuncio}" já tem lançamento em ${fmtData(rec.data)}.`,
+        texto: `"${rec.anuncio}"${adCaminho(adKey(rec)) ? ` (${adCaminho(adKey(rec))})` : ''} já tem lançamento em ${fmtData(rec.data)}.`,
         ok: 'Sobrescrever',
-      })) { $('btnSalvarAds').disabled = false; return; }
-      const { error } = await db.from('ads_anuncios_diarios').upsert(rec, { onConflict: 'user_id,data,anuncio,campanha' });
+      })) { botaoOcupado('btnSalvarAds', false); return; }
+      const { error } = await db.from('ads_anuncios_diarios').upsert(rec, { onConflict: 'user_id,data,projeto,campanha,conjunto,anuncio' });
       if (error) throw error;
-      if (selectedAds) selectedAds.add(rec.anuncio);
+      if (selectedAds) selectedAds.add(adKey(rec));
       toast('Anúncio lançado ✓');
     }
-    resetFormAds(rec.data);          // mantém a data: o próximo criativo é do mesmo dia
+    /* mantém data e hierarquia: o próximo criativo é do mesmo dia e do mesmo conjunto */
+    resetFormAds(rec.data, { campanha: rec.campanha, conjunto: rec.conjunto });
     await loadData();
     if (!eraEdicao) { $('formCardAds').open = true; $('a_anuncio').focus(); }
   } catch (err) {
     toast('Erro ao salvar: ' + (err.message || err), true);
   }
-  $('btnSalvarAds').disabled = false;
+  botaoOcupado('btnSalvarAds', false);
 }
 async function delAd(id) {
   const r = adRows.find(x => x.id === id);
@@ -2015,7 +2267,7 @@ function exportCsvGeral() {
   if (!list.length) return toast('Nada para exportar.', true);
   const headers = ['data', 'projeto', 'gasto', 'faturado_bruto', 'receita_liquida', 'lucro', 'margem_pct', 'roas', 'compras', 'custo_por_compra', 'vendas_iniciadas', 'checkouts_iniciados', 'taxa_conversao_checkout', 'cpm', 'cpc', 'cliques', 'visualizacao_pagina', 'perda_trafego', 'despesas_adicionais', 'reembolsos', 'chargeback', 'vendas_pendentes', 'compras_frontend', 'compras_backend', 'observacoes'];
   const lines = list.map(r => [
-    r.data, csvTxt(r.campanha), csvNum(r.gasto), csvNum(r.faturado), csvNum(liquidoOf(r)), csvNum(lucroOf(r)), csvNum(margemOf(r)),
+    r.data, csvTxt(r.projeto), csvNum(r.gasto), csvNum(r.faturado), csvNum(liquidoOf(r)), csvNum(lucroOf(r)), csvNum(margemOf(r)),
     csvNum(roasOf(r)), csvNum(r.compra), csvNum(cpaDiaOf(r)), csvNum(r.vendas_iniciadas), csvNum(r.finalizacao_compra), csvNum(taxaOf(r)),
     csvNum(r.cpm), csvNum(cpcOf(r)), csvNum(r.cliques), csvNum(r.visualizacao_destino), csvNum(perdaOf(r)),
     csvNum(r.despesas_adicionais), csvNum(r.vendas_reembolsadas), csvNum(r.vendas_chargeback), csvNum(r.vendas_pendentes),
@@ -2026,9 +2278,9 @@ function exportCsvGeral() {
 function exportCsvAds() {
   const list = filterByPeriod(adRows);
   if (!list.length) return toast('Nada para exportar.', true);
-  const headers = ['data', 'anuncio', 'projeto', 'status', 'gasto', 'faturado', 'lucro', 'roas', 'compras', 'custo_por_compra', 'cpm', 'cpc', 'cliques', 'ctr', 'hook_rate', 'retencao_video', 'frequencia', 'observacoes'];
+  const headers = ['data', 'anuncio', 'campanha', 'conjunto', 'projeto', 'status', 'gasto', 'faturado', 'lucro', 'roas', 'compras', 'custo_por_compra', 'cpm', 'cpc', 'cliques', 'ctr', 'hook_rate', 'retencao_video', 'frequencia', 'observacoes'];
   const lines = list.map(r => [
-    r.data, csvTxt(r.anuncio), csvTxt(r.campanha), r.status, csvNum(r.gasto), csvNum(r.faturado), csvNum(adLucroOf(r)), csvNum(adRoasOf(r)),
+    r.data, csvTxt(r.anuncio), csvTxt(r.campanha), csvTxt(r.conjunto), csvTxt(r.projeto), r.status, csvNum(r.gasto), csvNum(r.faturado), csvNum(adLucroOf(r)), csvNum(adRoasOf(r)),
     csvNum(r.compras), csvNum(cpaAdOf(r)), csvNum(r.cpm), csvNum(cpcOf(r)), csvNum(r.cliques), csvNum(r.ctr),
     csvNum(r.hook_rate), csvNum(r.retencao_video), csvNum(r.frequencia), csvTxt(r.observacoes),
   ].join(';'));
@@ -2039,7 +2291,9 @@ function exportCsvAds() {
    PROJETOS
 ================================================================= */
 async function loadProjetos() {
+  iniciarCarga();
   const { data, error } = await db.from('ads_projetos').select('*').eq('user_id', uid).order('nome');
+  terminarCarga();
   if (error) { toast('Erro ao carregar projetos: ' + error.message, true); return; }
   projetos = data || [];
   if (!projetos.length) {
@@ -2072,7 +2326,7 @@ function renderProjSelect() {
   $('btnDelProj').disabled = projetos.length < 2;
 }
 function renderProjCount() {
-  const nAds = adNames().length;
+  const nAds = adKeys().length;
   $('projCount').textContent = `${rows.length} ${rows.length === 1 ? 'dia' : 'dias'} · ${nAds} ${nAds === 1 ? 'anúncio' : 'anúncios'}`;
 }
 
@@ -2096,7 +2350,7 @@ async function renomearProjeto() {
   let { error } = await db.from('ads_projetos').update({ nome }).eq('nome', antigo).eq('user_id', uid);
   if (error) return toast('Erro ao renomear: ' + error.message, true);
   for (const t of ['ads_metricas_diarias', 'ads_anuncios_diarios']) {
-    const r = await db.from(t).update({ campanha: nome }).eq('campanha', antigo).eq('user_id', uid);
+    const r = await db.from(t).update({ projeto: nome }).eq('projeto', antigo).eq('user_id', uid);
     if (r.error) return toast('Erro ao mover lançamentos: ' + r.error.message, true);
   }
   setProjeto(nome, true);
@@ -2107,7 +2361,7 @@ async function renomearProjeto() {
 
 async function excluirProjeto() {
   if (projetos.length < 2) return toast('Você precisa ter pelo menos um projeto.', true);
-  const nAds = adNames().length;
+  const nAds = adKeys().length;
   const conf = await pedirTexto({
     titulo: `Excluir "${projeto}"?`,
     texto: `Isso apaga ${rows.length} ${rows.length === 1 ? 'dia' : 'dias'} e ${nAds} ${nAds === 1 ? 'anúncio' : 'anúncios'}. Não dá pra desfazer.\n\nDigite o nome do projeto para confirmar:`,
@@ -2117,7 +2371,7 @@ async function excluirProjeto() {
   if (conf == null) return;
   if (conf.trim() !== projeto) return toast('Nome não confere — nada foi excluído.', true);
   for (const t of ['ads_metricas_diarias', 'ads_anuncios_diarios']) {
-    const r = await db.from(t).delete().eq('campanha', projeto).eq('user_id', uid);
+    const r = await db.from(t).delete().eq('projeto', projeto).eq('user_id', uid);
     if (r.error) return toast('Erro ao excluir: ' + r.error.message, true);
   }
   const { error } = await db.from('ads_projetos').delete().eq('nome', projeto).eq('user_id', uid);
@@ -2130,18 +2384,23 @@ async function excluirProjeto() {
   toast(`Projeto "${nome}" excluído`);
 }
 
-async function excluirAnuncio(nome) {
-  const dias = adRows.filter(r => r.anuncio === nome).length;
+/** @param {string} key o caminho campanha␟conjunto␟anúncio — não só o nome */
+async function excluirAnuncio(key) {
+  const { campanha, conjunto, anuncio } = adParts(key);
+  const dias = adRows.filter(r => adKey(r) === key).length;
+  const caminho = adCaminho(key);
   if (!await confirmar({
-    titulo: `Excluir "${nome}"?`,
-    texto: `Apaga os ${dias} ${dias === 1 ? 'dia lançado' : 'dias lançados'} desse criativo.`,
+    titulo: `Excluir "${anuncio}"?`,
+    texto: `${caminho ? caminho + '\n' : ''}Apaga os ${dias} ${dias === 1 ? 'dia lançado' : 'dias lançados'} desse criativo. Um criativo de mesmo nome em outro conjunto não é tocado.`,
     ok: 'Excluir', perigo: true,
   })) return;
-  const { error } = await db.from('ads_anuncios_diarios').delete().eq('campanha', projeto).eq('anuncio', nome).eq('user_id', uid);
+  const { error } = await db.from('ads_anuncios_diarios').delete()
+    .eq('user_id', uid).eq('projeto', projeto)
+    .eq('campanha', campanha).eq('conjunto', conjunto).eq('anuncio', anuncio);
   if (error) return toast('Erro ao excluir: ' + error.message, true);
-  if (editingAdId && adRows.some(r => r.id === editingAdId && r.anuncio === nome)) resetFormAds();
-  if (selectedAds) selectedAds.delete(nome);
-  toast(`Anúncio "${nome}" excluído`);
+  if (editingAdId && adRows.some(r => r.id === editingAdId && adKey(r) === key)) resetFormAds();
+  if (selectedAds) selectedAds.delete(key);
+  toast(`Anúncio "${anuncio}" excluído`);
   await loadData();
 }
 
@@ -2149,9 +2408,12 @@ async function excluirAnuncio(nome) {
    Dados / render
 ================================================================= */
 async function loadData() {
+  return comCarga(_loadData);
+}
+async function _loadData() {
   const [g, a] = await Promise.all([
-    db.from('ads_metricas_diarias').select('*').eq('user_id', uid).eq('campanha', projeto).order('data', { ascending: true }),
-    db.from('ads_anuncios_diarios').select('*').eq('user_id', uid).eq('campanha', projeto).order('data', { ascending: true }),
+    db.from('ads_metricas_diarias').select('*').eq('user_id', uid).eq('projeto', projeto).order('data', { ascending: true }),
+    db.from('ads_anuncios_diarios').select('*').eq('user_id', uid).eq('projeto', projeto).order('data', { ascending: true }),
   ]);
   if (g.error) { toast('Erro ao carregar: ' + g.error.message, true); return; }
   if (a.error) { toast('Erro ao carregar: ' + a.error.message, true); return; }
@@ -2189,7 +2451,7 @@ function renderAll() {
   }
   renderAdDatalist();
   if (abaAtiva === 'anuncios') {
-    renderRanking();
+    renderArvore();
     renderAnalise();
     renderCompare();
     renderRetencao();
@@ -2198,6 +2460,7 @@ function renderAll() {
   if (abaAtiva === 'diario') renderDiario();
   if (abaAtiva === 'conta') renderConta();
   updatePreviewsGeral();
+  animarNumeros();
 }
 
 /* =================================================================
@@ -2325,6 +2588,8 @@ const CAMPOS_DIA = [
 ];
 const CAMPOS_AD = [
   { k: 'anuncio', rot: 'Anúncio', tipo: 'txt', syn: ['nome do anuncio', 'ad name', 'anuncio', 'criativo'] },
+  { k: 'campanha', rot: 'Campanha', tipo: 'txt', syn: ['nome da campanha', 'campaign name', 'campanha'] },
+  { k: 'conjunto', rot: 'Conjunto', tipo: 'txt', syn: ['nome do conjunto de anuncios', 'ad set name', 'conjunto de anuncios', 'conjunto'] },
   { k: 'gasto', rot: 'Gasto', tipo: 'dec', syn: ['valor usado', 'valor gasto', 'amount spent', 'gasto'] },
   { k: 'faturado', rot: 'Faturado', tipo: 'dec', syn: ['valor de conversao da compra', 'purchase conversion value', 'valor de conversao', 'faturamento'] },
   { k: 'compras', rot: 'Compras', tipo: 'int', syn: ['compras', 'purchases', 'resultados', 'results'] },
@@ -2492,27 +2757,34 @@ ${dia ? 'A data não vem do Gerenciador: ela continua sendo a do formulário.' :
     }
     const recs = registros();
     btnOk.disabled = !recs.length;
+    const comHier = recs.filter(r => r.campanha || r.conjunto).length;
     alvo.innerHTML = !recs.length
       ? `<p class="colarerr">Nenhuma linha com nome de anúncio.</p>`
-      : `<p class="colarok">${recs.length} ${recs.length === 1 ? 'criativo' : 'criativos'} em ${fmtData($('colarData').value)}:</p>
-         <ul class="colarlist">${recs.map(r => `<li><span>${esc(r.anuncio)}</span><b>${r.gasto != null ? fmtBRL(r.gasto) : '—'}</b></li>`).join('')}</ul>`;
+      : `<p class="colarok">${recs.length} ${recs.length === 1 ? 'criativo' : 'criativos'} em ${fmtData($('colarData').value)}${comHier ? ` · ${comHier} com campanha/conjunto` : ' · sem hierarquia (mapeie Campanha e Conjunto)'}:</p>
+         <ul class="colarlist">${recs.map(r => `<li><span>${esc(r.anuncio)}${adCaminho(adKey(r)) ? `<small>${esc(adCaminho(adKey(r)))}</small>` : ''}</span><b>${r.gasto != null ? fmtBRL(r.gasto) : '—'}</b></li>`).join('')}</ul>`;
   }
 
   /** todos os registros com o MESMO conjunto de chaves: o PostgREST exige.
       `status` fica de fora de propósito: no insert o default do banco é
-      'ativo', e num criativo que já existe pausado o upsert não o reativa. */
+      'ativo', e num criativo que já existe pausado o upsert não o reativa.
+      `campanha`/`conjunto` são NOT NULL DEFAULT '' — nunca podem virar null. */
   function registros() {
     const dataISO = $('colarData').value;
-    const chaves = [...new Set(mapa.filter(Boolean))].filter(k => k !== 'anuncio');
-    const porNome = new Map();   // linha repetida no mesmo dia quebraria o ON CONFLICT
+    const chaves = [...new Set(mapa.filter(Boolean))].filter(k => !['anuncio', 'campanha', 'conjunto'].includes(k));
+    const porCaminho = new Map();   // o mesmo caminho duas vezes quebraria o ON CONFLICT
     for (const linha of linhas) {
       const vals = valoresDe(linha);
       if (!vals.anuncio || ehTotal(vals.anuncio)) continue;
-      const rec = { data: dataISO, anuncio: vals.anuncio, campanha: projeto, user_id: uid };
+      const rec = {
+        data: dataISO, projeto, user_id: uid,
+        anuncio: vals.anuncio,
+        campanha: vals.campanha || '',
+        conjunto: vals.conjunto || '',
+      };
       for (const k of chaves) rec[k] = vals[k] ?? null;
-      porNome.set(rec.anuncio, rec);
+      porCaminho.set(adKey(rec), rec);
     }
-    return [...porNome.values()];
+    return [...porCaminho.values()];
   }
 
   /* ---- aplicar ---- */
@@ -2537,16 +2809,16 @@ ${dia ? 'A data não vem do Gerenciador: ela continua sendo a do formulário.' :
     const recs = registros();
     if (!recs.length) return toast('Nenhuma linha com nome de anúncio.', true);
 
-    const dups = recs.filter(r => adRows.some(a => a.data === dataISO && a.anuncio === r.anuncio));
+    const dups = recs.filter(r => adRows.some(a => a.data === dataISO && adKey(a) === adKey(r)));
     if (dups.length && !await confirmar({
       titulo: `Sobrescrever ${dups.length} ${dups.length === 1 ? 'criativo' : 'criativos'}?`,
-      texto: `${dups.map(d => d.anuncio).join(', ')} já ${dups.length === 1 ? 'tem lançamento' : 'têm lançamento'} em ${fmtData(dataISO)}.`,
+      texto: `${dups.map(d => d.anuncio).join(', ')} já ${dups.length === 1 ? 'tem lançamento' : 'têm lançamento'} em ${fmtData(dataISO)} no mesmo conjunto.`,
       ok: 'Sobrescrever',
     })) return;
 
-    btnOk.disabled = true;
-    const { error } = await db.from('ads_anuncios_diarios').upsert(recs, { onConflict: 'user_id,data,anuncio,campanha' });
-    btnOk.disabled = false;
+    btnOk.disabled = true; btnOk.classList.add('ocupado');
+    const { error } = await comCarga(() => db.from('ads_anuncios_diarios').upsert(recs, { onConflict: 'user_id,data,projeto,campanha,conjunto,anuncio' }));
+    btnOk.disabled = false; btnOk.classList.remove('ocupado');
     if (error) return toast('Erro ao lançar: ' + error.message, true);
     fim();
     toast(`${recs.length} ${recs.length === 1 ? 'criativo lançado' : 'criativos lançados'} em ${fmtData(dataISO)} ✓`);
@@ -2795,7 +3067,7 @@ function renderGauges() {
     const nivel = ap.pronto ? 'good' : 'warn';
     cards.push(`<div class="plate gauge">
       <div class="cardhead"><h3>Fase de aprendizado <span class="sub">· últimos 7 dias</span></h3></div>
-      <div class="gaugenum ${nivel}">${nf0.format(ap.conv)}<small> / ${META_APRENDIZADO} conversões</small></div>
+      <div class="gaugenum ${nivel}"><span ${anima('g:conv', ap.conv, 'num')}>${nf0.format(ap.conv)}</span><small> / ${META_APRENDIZADO} conversões</small></div>
       ${medidor(ap.conv, META_APRENDIZADO, META_APRENDIZADO, ap.pronto ? '' : 'warn')}
       <p class="chartfoot">${ap.pronto
         ? 'O Meta tem sinal suficiente para otimizar sozinho. Mudanças de orçamento custam menos agora.'
@@ -2891,9 +3163,9 @@ function mares() {
     p: 'O vazamento está no gateway, não no anúncio: pix não pago, boleto vencido, cartão recusado.',
   });
 
-  const fadiga = adNames().map(n => {
-    const dias = ultimosDias(adRows.filter(a => a.anuncio === n), 7).filter(a => a.frequencia != null);
-    return dias.length ? { n, f: Number(dias[dias.length - 1].frequencia) } : null;
+  const fadiga = adKeys().map(k => {
+    const dias = ultimosDias(adRows.filter(a => adKey(a) === k), 7).filter(a => a.frequencia != null);
+    return dias.length ? { n: adRotuloUnico(k), f: Number(dias[dias.length - 1].frequencia) } : null;
   }).filter(x => x && x.f >= 2.5);
   if (fadiga.length) av.push({
     sev: 'media',
@@ -2903,9 +3175,9 @@ function mares() {
   });
 
   /* um só criativo pedindo corte já aparece em "Próxima ação"; a partir de dois vira maré */
-  const cortar = adNames().map(n => {
-    const dias = adRows.filter(r => r.anuncio === n).sort((a, b) => a.data.localeCompare(b.data));
-    return dias.length ? { n, v: diagnose(dias).verdict } : null;
+  const cortar = adKeys().map(k => {
+    const dias = adRows.filter(r => adKey(r) === k).sort((a, b) => a.data.localeCompare(b.data));
+    return dias.length ? { n: adRotuloUnico(k), v: diagnose(dias).verdict } : null;
   }).filter(x => x && x.v === 'Cortar');
   if (cortar.length >= 2) av.push({
     sev: 'alta',
@@ -3011,9 +3283,9 @@ function renderHoje() {
     $('hojeHero').innerHTML = `<div class="plate">
       <div class="cardhead"><h3>Hoje <span class="sub">· ${fmtData(hojeISO)}</span></h3></div>
       <div class="hoje-num">
-        ${kpiCard('Lucro', fmtBRL(t.lucro), '<div class="kdelta">do dia</div>', t.lucro >= 0 ? 'good' : 'bad')}
-        ${kpiCard('Gasto', fmtBRL(t.gasto), '<div class="kdelta">investido</div>')}
-        ${kpiCard('Compras', fmtNum(t.compra), '<div class="kdelta">vendas aprovadas</div>')}
+        ${kpiCard('Lucro', fmtBRL(t.lucro), '<div class="kdelta">do dia</div>', t.lucro >= 0 ? 'good' : 'bad', false, '', anima('h:lucro', t.lucro))}
+        ${kpiCard('Gasto', fmtBRL(t.gasto), '<div class="kdelta">investido</div>', '', false, '', anima('h:gasto', t.gasto))}
+        ${kpiCard('Compras', fmtNum(t.compra), '<div class="kdelta">vendas aprovadas</div>', '', false, '', anima('h:comp', t.compra, 'num'))}
       </div>
     </div>`;
   } else if (rOntem) {
@@ -3021,9 +3293,9 @@ function renderHoje() {
     $('hojeHero').innerHTML = `<div class="plate">
       <div class="cardhead"><h3>Ontem <span class="sub">· ${fmtData(ontem)}</span></h3></div>
       <div class="hoje-num">
-        ${kpiCard('Lucro', fmtBRL(t.lucro), '<div class="kdelta">do dia</div>', t.lucro >= 0 ? 'good' : 'bad')}
-        ${kpiCard('Gasto', fmtBRL(t.gasto), '<div class="kdelta">investido</div>')}
-        ${kpiCard('Compras', fmtNum(t.compra), '<div class="kdelta">vendas aprovadas</div>')}
+        ${kpiCard('Lucro', fmtBRL(t.lucro), '<div class="kdelta">do dia</div>', t.lucro >= 0 ? 'good' : 'bad', false, '', anima('h:lucro', t.lucro))}
+        ${kpiCard('Gasto', fmtBRL(t.gasto), '<div class="kdelta">investido</div>', '', false, '', anima('h:gasto', t.gasto))}
+        ${kpiCard('Compras', fmtNum(t.compra), '<div class="kdelta">vendas aprovadas</div>', '', false, '', anima('h:comp', t.compra, 'num'))}
       </div>
     </div>`;
   } else {
@@ -3047,7 +3319,7 @@ function renderHoje() {
   } else {
     const faltaTxt = meta.pago
       ? `<div class="metanum good">Dia pago</div><div class="metasub">o gasto de hoje já voltou</div>`
-      : `<div class="metanum">${fmtBRL(meta.faltaFat)}</div>
+      : `<div class="metanum" ${anima('m:falta', meta.faltaFat)}>${fmtBRL(meta.faltaFat)}</div>
          <div class="metasub">≈ ${meta.faltaComp < 1 ? 'menos de 1 venda' : `${nf0.format(Math.ceil(meta.faltaComp))} ${Math.ceil(meta.faltaComp) === 1 ? 'venda' : 'vendas'}`} para o azul</div>`;
     $('hojeMeta').innerHTML = `<div class="plate">
       <div class="cardhead"><h3>Velocidade de escape <span class="sub">· ${meta.lancado ? 'sobre o gasto de hoje' : 'estimado no gasto médio'}</span></h3></div>
@@ -3058,7 +3330,7 @@ function renderHoje() {
         </div>
         <div>
           <div class="metalbl">Para bater a margem alvo</div>
-          <div class="metanum">${meta.fatAlvo != null ? fmtBRL(meta.fatAlvo) : '—'}</div>
+          <div class="metanum" ${anima('m:alvo', meta.fatAlvo)}>${meta.fatAlvo != null ? fmtBRL(meta.fatAlvo) : '—'}</div>
           <div class="metasub">${meta.comprasAlvo != null ? `≈ ${nf0.format(Math.ceil(meta.comprasAlvo))} vendas · ${nf0.format(num(eco.margem_alvo_pct))}% de margem` : 'defina a margem alvo em Conta'}</div>
         </div>
       </div>
@@ -3095,7 +3367,7 @@ function renderHoje() {
 
 /** O criativo que mais pede uma decisão agora. Reusa diagnose(). */
 function proximaAcaoHtml() {
-  const nomes = adNames();
+  const nomes = adKeys();
   if (!nomes.length) {
     return `<div class="plate">
       <div class="cardhead"><h3>Próxima ação</h3></div>
@@ -3104,11 +3376,11 @@ function proximaAcaoHtml() {
     </div>`;
   }
   const PRIO = { 'Cortar': 0, 'Escalar': 1, 'Testar novo criativo': 2, 'Manter': 3, 'Coletando dados': 4 };
-  const cands = nomes.map(n => {
-    const days = adRows.filter(r => r.anuncio === n).sort((a, b) => a.data.localeCompare(b.data));
+  const cands = nomes.map(k => {
+    const days = adRows.filter(r => adKey(r) === k).sort((a, b) => a.data.localeCompare(b.data));
     if (!days.length) return null;
     const d = diagnose(days);
-    return { nome: n, ...d };
+    return { key: k, nome: adRotuloUnico(k), ...d };
   }).filter(Boolean).sort((a, b) => (PRIO[a.verdict] ?? 9) - (PRIO[b.verdict] ?? 9) || num(b.gasto) - num(a.gasto));
 
   const top = cands[0];
@@ -3120,7 +3392,7 @@ function proximaAcaoHtml() {
       <span class="verdict ${top.vClass}">${top.verdict}</span>
       <span class="vsum"><b>${esc(top.nome)}</b> — ${top.vSum}</span>
     </div>
-    <p class="diagfoot">${resumo}. <button class="rowbtn txt" data-ana-hoje="${esc(top.nome)}">Analisar ${esc(top.nome)} →</button></p>
+    <p class="diagfoot">${resumo}. <button class="rowbtn txt" data-ana-hoje="${esc(top.key)}">Analisar ${esc(top.nome)} →</button></p>
   </div>`;
 }
 
@@ -3136,7 +3408,7 @@ function renderDiario() {
   }
   for (const a of adRows) {
     if (!a.observacoes) continue;
-    itens.push({ data: a.data, txt: a.observacoes, tipo: 'ad', meta: a.anuncio, val: adLucroOf(a), roas: adRoasOf(a) });
+    itens.push({ data: a.data, txt: a.observacoes, tipo: 'ad', meta: adCaminho(adKey(a)) ? `${a.anuncio} · ${adCaminho(adKey(a))}` : a.anuncio, val: adLucroOf(a), roas: adRoasOf(a) });
   }
   itens.sort((x, y) => y.data.localeCompare(x.data));
 
@@ -3172,7 +3444,7 @@ function renderDiario() {
 function renderConta() {
   $('acctMail').textContent = userEmail || '—';
   $('acctAvatar').textContent = (userEmail || '?').charAt(0).toUpperCase();
-  const nAds = adNames().length;
+  const nAds = adKeys().length;
   $('acctResumo').textContent =
     `${projetos.length} ${projetos.length === 1 ? 'projeto' : 'projetos'} · ${rows.length} ${rows.length === 1 ? 'dia' : 'dias'} · ${nAds} ${nAds === 1 ? 'criativo' : 'criativos'}`;
 
@@ -3222,7 +3494,9 @@ function trocarAba(nome) {
   /* na Conta o FAB não tem o que fazer — e cobriria os campos da direita */
   $('fabLancar').classList.toggle('hidden', nome === 'conta');
   window.scrollTo({ top: 0, behavior: 'instant' });
+  navigator.vibrate?.(4);
   renderAll();
+  revelar($('tab-' + nome));
 }
 
 /* =================================================================
@@ -3359,11 +3633,20 @@ async function enterApp() {
 
   $('login').classList.add('hidden');
   $('app').classList.remove('hidden');
+  /* o esqueleto entra ANTES da rede. A alternativa é uma tela vazia enquanto
+     o Supabase responde — e tela vazia lê como app quebrado. */
+  $('skeleton').classList.remove('hidden');
+  $('app').classList.add('primeira-carga');
+  $('splash').classList.add('hidden');
   montarNav();
   await loadProjetos();
   await loadData();
+  $('skeleton').classList.add('hidden');
+  $('app').classList.remove('primeira-carga');
+  /* o render que rodou atrás do esqueleto já preencheu os valores; zerar aqui
+     faz a primeira tela visível contar a partir do zero — que é a graça toda */
+  valoresAnim.clear();
   trocarAba(abaAtiva);
-  $('splash').classList.add('hidden');
 
   if (!localStorage.getItem('ergo_onboard')) { abrirOnboard(); return; }
 
@@ -3379,7 +3662,7 @@ async function submeterAuth(e) {
   e.preventDefault();
   const email = $('loginEmail').value.trim();
   const senha = $('loginPass').value;
-  $('loginBtn').disabled = true;
+  botaoOcupado('loginBtn', true);
   $('loginErr').classList.add('hidden');
 
   try {
@@ -3407,7 +3690,7 @@ async function submeterAuth(e) {
   } catch (err) {
     erroLogin(err.message || String(err));
   }
-  $('loginBtn').disabled = false;
+  botaoOcupado('loginBtn', false);
 }
 
 async function esqueciSenha() {
@@ -3583,21 +3866,23 @@ async function iniciar() {
   /* configurações (agora dentro da tela Conta) */
   for (const id of ['s_taxa', 's_imposto', 's_margem']) $(id).addEventListener('input', ecoPreviewText);
   $('btnSaveSettings').addEventListener('click', async () => {
+    botaoOcupado('btnSaveSettings', true);
     const novo = {
       taxa_pct: parseNum($('s_taxa').value) ?? 0,
       imposto_pct: parseNum($('s_imposto').value) ?? 0,
       custo_por_venda: parseNum($('s_custo').value) ?? 0,
       margem_alvo_pct: parseNum($('s_margem').value) ?? 20,
     };
-    if (novo.taxa_pct + novo.imposto_pct >= 100) return toast('Taxa + imposto não podem chegar a 100%.', true);
-    const { error } = await db.from('ads_projetos').update(novo).eq('nome', projeto).eq('user_id', uid);
-    if (error) return toast('Erro ao salvar economia: ' + error.message, true);
+    if (novo.taxa_pct + novo.imposto_pct >= 100) { botaoOcupado('btnSaveSettings', false); return toast('Taxa + imposto não podem chegar a 100%.', true); }
+    const { error } = await comCarga(() => db.from('ads_projetos').update(novo).eq('nome', projeto).eq('user_id', uid));
+    if (error) { botaoOcupado('btnSaveSettings', false); return toast('Erro ao salvar economia: ' + error.message, true); }
 
     settings.perdaMax = parseNum($('s_perda').value) ?? DEFAULT_SETTINGS.perdaMax;
     settings.spikePct = parseNum($('s_spike').value) ?? DEFAULT_SETTINGS.spikePct;
     localStorage.setItem('ads_dash_settings', JSON.stringify(settings));
 
     await loadProjetos();
+    botaoOcupado('btnSaveSettings', false);
     toast('Configurações salvas ✓');
     renderAll();
   });

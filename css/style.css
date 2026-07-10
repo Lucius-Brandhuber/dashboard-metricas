@@ -103,9 +103,85 @@ body {
 .accretion.lg { --sz: 132px; }
 @keyframes orbita { to { transform: rotate(360deg); } }
 
+/* =====================================================================
+   MOVIMENTO
+   Tudo aqui é enfeite. `prefers-reduced-motion` desliga o conjunto
+   inteiro no fim deste arquivo — inclusive as animações de entrada,
+   que precisam de `animation: none` e não só de `transition: none`.
+===================================================================== */
+
+/* a faixa de luz: acende no topo em qualquer ida ao Supabase */
+.loadbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 120;
+  overflow: hidden; opacity: 0; transition: opacity .2s var(--ease); pointer-events: none;
+}
+.loadbar.on { opacity: 1; }
+.loadbar > i {
+  display: block; height: 100%; width: 40%;
+  background: linear-gradient(90deg, transparent, var(--gold-bright), var(--gold), transparent);
+  animation: varrer 1.1s var(--ease) infinite;
+}
+@keyframes varrer { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+
+/* esqueleto: cinza que respira. Nunca use ouro aqui — ouro é limiar, não "carregando". */
+.skel { padding: 4px 0 24px; display: flex; flex-direction: column; gap: 14px; }
+.skline, .skplate {
+  border-radius: 8px;
+  background: linear-gradient(100deg, var(--plate) 30%, var(--plate-2) 50%, var(--plate) 70%);
+  background-size: 300% 100%;
+  animation: respirar 1.5s ease-in-out infinite;
+}
+.skplate { border-radius: var(--radius); border: 1px solid var(--hair); }
+.skrow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.skrow > * { min-width: 0; }
+.w40 { width: 40%; } .w70 { width: 70%; }
+.h12 { height: 12px; } .h22 { height: 22px; }
+.h84 { height: 84px; } .h110 { height: 110px; } .h140 { height: 140px; } .h150 { height: 150px; }
+@keyframes respirar { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+/* enquanto o esqueleto está de pé, nada mais compete por espaço */
+.app.primeira-carga .projbar,
+.app.primeira-carga .tabpanel,
+.app.primeira-carga .fab { display: none !important; }
+
+/* entrada escalonada dos cartões da aba ativa */
+.tabpanel.entrando > * { animation: subir .34s var(--ease) backwards; }
+.tabpanel.entrando > *:nth-child(1) { animation-delay: 0ms; }
+.tabpanel.entrando > *:nth-child(2) { animation-delay: 40ms; }
+.tabpanel.entrando > *:nth-child(3) { animation-delay: 80ms; }
+.tabpanel.entrando > *:nth-child(4) { animation-delay: 120ms; }
+.tabpanel.entrando > *:nth-child(5) { animation-delay: 160ms; }
+.tabpanel.entrando > *:nth-child(n+6) { animation-delay: 200ms; }
+@keyframes subir { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* o canvas acende; o Chart.js continua com animation:false (rAF não roda em aba oculta) */
+.chartbox canvas { animation: acender .45s var(--ease) backwards; }
+@keyframes acender { from { opacity: 0; } to { opacity: 1; } }
+
+/* botão ocupado: o rótulo some e um anel gira no lugar */
+.btn.ocupado { color: transparent !important; position: relative; pointer-events: none; }
+.btn.ocupado::after {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 17px; height: 17px;
+  margin: -8.5px 0 0 -8.5px; border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, .25); border-top-color: rgba(0, 0, 0, .8);
+  animation: girar .6s linear infinite;
+}
+.btn.ghost.ocupado::after, .btn.danger.ocupado::after {
+  border-color: var(--hair-strong); border-top-color: var(--gold);
+}
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* a placa reage ao toque */
+.plate { transition: transform .18s var(--ease), border-color .18s var(--ease); }
+@media (hover: hover) { .plate:hover { border-color: var(--hair-strong); } }
+
+.splash { transition: opacity .3s var(--ease); }
+.splash.hidden { display: flex !important; opacity: 0; pointer-events: none; visibility: hidden; }
+
 @media (prefers-reduced-motion: reduce) {
   .accretion { animation: none; }
   * { transition: none !important; }
+  .tabpanel.entrando > *, .chartbox canvas, .skline, .skplate, .loadbar > i { animation: none !important; }
+  .splash.hidden { display: none !important; }
 }
 
 /* ===== Splash ===== */
@@ -652,6 +728,85 @@ tr.expandrow:hover td { background: var(--void); }
 .sobre b { color: var(--text); }
 
 /* =====================================================================
+   ÁRVORE Campanha › Conjunto › Anúncio
+   Cada nível recua e perde peso: o olho desce a hierarquia sozinho.
+===================================================================== */
+.tree { display: flex; flex-direction: column; gap: 4px; }
+/* no celular cada coisa ganha a sua linha: nome inteiro, chips, números.
+   Espremer os quatro números na largura de um dedo é o mesmo que não mostrá-los. */
+.treerow {
+  display: grid; align-items: center; gap: 8px 12px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-areas: "caret nome" ". chips" ". nums";
+  padding: 12px 14px; border-radius: 9px; min-height: 56px;
+  background: var(--plate-2); border: 1px solid var(--hair);
+  cursor: pointer; transition: border-color .16s var(--ease), background .16s var(--ease);
+}
+.treerow:hover { border-color: var(--hair-strong); }
+.treerow:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.treerow.lvl2 { margin-left: 14px; background: var(--plate); }
+.treerow.lvl3 {
+  margin-left: 28px; background: transparent; cursor: default;
+  border-color: transparent; border-bottom: 1px solid var(--hair); border-radius: 0;
+  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-areas: "dot nome" ". chips" ". nums" ". acoes";
+}
+.treerow.lvl3:hover { background: var(--plate-2); border-radius: 9px; border-bottom-color: transparent; }
+
+.tcaret { grid-area: caret; color: var(--muted); font-size: 11px; transition: transform .18s var(--ease); }
+.treerow.aberto > .tcaret { transform: rotate(90deg); color: var(--gold); }
+.tdot { grid-area: dot; width: 9px; height: 9px; border-radius: 50%; }
+
+.tnome { grid-area: nome; min-width: 0; }
+.tnome b { display: block; font-size: 14px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.treerow.lvl2 .tnome b { font-size: 13.5px; font-weight: 500; }
+.treerow.lvl3 .tnome b { font-size: 13.5px; font-weight: 500; color: var(--text-2); }
+.tnome small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.tsub { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
+
+.tchips { grid-area: chips; display: flex; gap: 5px; flex-wrap: wrap; }
+.tchips:empty { display: none; }
+.tchip {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap;
+}
+.tchip.good { color: var(--good-text); }
+.tchip.warn { color: var(--warn); }
+.tchip.bad { color: var(--bad); }
+.tchip.dim { color: var(--muted); }
+
+.tnums { grid-area: nums; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.tn { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tn i { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tn b { font-size: 13.5px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tn b.good { color: var(--good-text); }
+.tn b.bad { color: var(--bad); }
+.tn b.dim { color: var(--muted-dim); }
+
+.tacoes { grid-area: acoes; display: flex; gap: 8px; }
+
+@media (min-width: 720px) {
+  /* a partir daqui cabe tudo numa linha só e a hierarquia aparece de relance */
+  .treerow {
+    gap: 4px 16px;
+    grid-template-columns: 18px minmax(0, 1.4fr) minmax(0, auto) minmax(300px, 1.6fr);
+    grid-template-areas: "caret nome chips nums";
+  }
+  .treerow.lvl3 {
+    grid-template-columns: 10px minmax(0, 1.4fr) minmax(0, auto) minmax(300px, 1.6fr) auto;
+    grid-template-areas: "dot nome chips nums acoes";
+  }
+  .tchips { justify-content: flex-end; }
+  .tnums { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 10px; }
+  .tn { align-items: flex-end; text-align: right; }
+}
+
+.anacrumb { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+.anacrumb .crumb { color: var(--text-2); }
+.anacrumb .crumbsep { color: var(--gold-dim); margin: 0 4px; }
+.anacrumb b { color: var(--text); font-weight: 600; }
+
+/* =====================================================================
    ONDA 3
 ===================================================================== */
 
@@ -831,6 +986,7 @@ td .rowbtns { display: flex; gap: 8px; justify-content: flex-end; }
 }
 .colarlist li:last-child { border-bottom: none; }
 .colarlist span { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.colarlist span small { display: block; font-size: 10.5px; color: var(--muted); }
 .colarlist b { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
