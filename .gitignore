@@ -1,0 +1,4 @@
+# snapshot dos dados reais antes da migração multi-tenant — o repo é público
+.backup/
+
+.DS_Store

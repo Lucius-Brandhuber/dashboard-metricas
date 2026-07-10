@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- o disco de acreção: a luz curvada em volta do horizonte -->
+    <linearGradient id="anel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8A7448"/>
+      <stop offset="38%" stop-color="#E4C88A"/>
+      <stop offset="62%" stop-color="#C8A86A"/>
+      <stop offset="100%" stop-color="#6B5A38"/>
+    </linearGradient>
+    <filter id="brilho" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="#08080B"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="url(#anel)" stroke-width="26" filter="url(#brilho)"/>
+  <!-- o horizonte de eventos: vazio real, não preenchimento escuro -->
+  <circle cx="256" cy="256" r="124" fill="#08080B"/>
+  <circle cx="256" cy="256" r="126" fill="none" stroke="#C8A86A" stroke-width="1.5" opacity="0.35"/>
+</svg>

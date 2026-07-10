@@ -3,12 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0a0a0f">
-<title>Métricas — Tráfego Pago</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+<meta name="theme-color" content="#08080B">
+<title>Ergosphere</title>
+<meta name="description" content="Ergosphere — o painel que mostra onde ainda dá pra extrair lucro da sua conta de anúncios.">
+
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ergosphere">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
@@ -16,18 +24,23 @@
 <body>
 
 <!-- ===== Splash ===== -->
-<div id="splash" class="splash"><div class="spinner"></div></div>
+<div id="splash" class="splash"><div class="accretion"></div></div>
 
-<!-- ===== Login ===== -->
+<!-- ===== Auth ===== -->
 <div id="login" class="login hidden">
   <form id="loginForm" class="logincard" autocomplete="on">
-    <div class="loginlogo">📊</div>
-    <h1>Métricas — Tráfego Pago</h1>
-    <p class="loginsub">Entre para acessar seu dashboard</p>
-    <input type="email" id="loginEmail" value="luciusbrandhuber2@gmail.com" autocomplete="username" readonly>
-    <input type="password" id="loginPass" placeholder="Senha" autocomplete="current-password" required>
+    <div class="loginlogo"><div class="accretion lg"></div></div>
+    <h1>Ergo<b>sphere</b></h1>
+    <p class="loginsub" id="authSub">A zona onde ainda dá pra extrair energia.</p>
+
+    <input type="email" id="loginEmail" placeholder="seu e-mail" autocomplete="username" required>
+    <input type="password" id="loginPass" placeholder="senha" autocomplete="current-password" required>
+    <input type="text" id="loginConvite" class="hidden" placeholder="código de convite" autocomplete="off">
+
     <button type="submit" class="btn primary" id="loginBtn">Entrar</button>
     <p id="loginErr" class="loginerr hidden"></p>
+    <button type="button" class="authswitch" id="btnAuthSwitch">Tenho um convite — criar conta</button>
+    <button type="button" class="authswitch" id="btnEsqueci">Esqueci minha senha</button>
   </form>
 </div>
 
@@ -35,31 +48,45 @@
 <div id="app" class="app hidden">
 
   <header class="topbar">
-    <div class="brand">📊 <span>Métricas</span></div>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="geral" role="tab">Visão Geral</button>
-      <button class="tab" data-tab="anuncios" role="tab">Anúncios</button>
-    </nav>
-    <div class="topactions">
-      <button class="iconbtn" id="btnSettings" title="Configurações">⚙</button>
-      <button class="iconbtn" id="btnLogout" title="Sair">⏻</button>
+    <div class="brand">
+      <div class="accretion sm"></div>
+      <span class="wordmark">Ergo<b>sphere</b></span>
     </div>
+    <nav class="nav" role="tablist" id="navTop"></nav>
   </header>
 
   <main>
 
-    <!-- ======================= PROJETO ATIVO ======================= -->
-    <div class="projbar">
-      <span class="projlabel">Projeto</span>
-      <select id="projSel" class="select"></select>
-      <button class="btn ghost small" id="btnNewProj">＋ Novo</button>
-      <button class="iconbtn" id="btnRenameProj" title="Renomear projeto">✎</button>
-      <button class="iconbtn danger" id="btnDelProj" title="Excluir projeto">🗑</button>
+    <!-- barra do projeto ativo (discreta) -->
+    <div class="projbar" id="projbar">
+      <select id="projSel" class="select" aria-label="Projeto ativo"></select>
       <span class="projcount" id="projCount"></span>
     </div>
 
+    <!-- ======================= HOJE ======================= -->
+    <section id="tab-hoje" class="tabpanel" role="tabpanel" aria-labelledby="nav-hoje">
+      <div class="hoje-head">
+        <div class="hoje-oi" id="hojeOi">Bom dia</div>
+        <div class="hoje-data" id="hojeData"></div>
+      </div>
+
+      <div id="hojePendencia"></div>
+      <div id="hojeHero"></div>
+      <div id="hojeMeta"></div>
+      <div id="hojeVeredito"></div>
+      <div id="hojeMares"></div>
+      <div id="hojeAcao"></div>
+      <div class="gaugegrid" id="hojeGauges"></div>
+
+      <div class="plate" id="hojeStreakCard">
+        <div class="cardhead"><h3>Órbitas registradas <span class="sub">· últimos 14 dias</span></h3></div>
+        <div class="streak" id="hojeStreak"></div>
+        <p class="chartfoot" id="hojeStreakFoot"></p>
+      </div>
+    </section>
+
     <!-- ======================= VISÃO GERAL ======================= -->
-    <section id="tab-geral" class="tabpanel">
+    <section id="tab-geral" class="tabpanel hidden" role="tabpanel" aria-labelledby="nav-geral">
 
       <div class="toolbar">
         <div class="chips" id="periodChips">
@@ -78,34 +105,32 @@
         <button class="btn ghost small" id="btnCsvGeral">⬇ CSV</button>
       </div>
 
-      <!-- ---------- 0. Lançar dia ---------- -->
-      <details class="card formcard" id="formCardGeral">
+      <details class="plate formcard" id="formCardGeral">
         <summary><span class="plus">＋</span> Lançar dia <span class="editing-tag hidden" id="editTagGeral">editando</span></summary>
         <form id="formGeral" class="metform">
 
           <div class="fgrid">
-            <label>Data<input type="date" id="f_data" required></label>
+            <label>Data
+              <input type="date" id="f_data" required>
+              <span class="datachips">
+                <button type="button" class="chip" data-setdata="ontem" data-alvo="f_data">Ontem</button>
+                <button type="button" class="chip" data-setdata="hoje" data-alvo="f_data">Hoje</button>
+              </span>
+            </label>
             <label>Gasto (R$)<input type="text" id="f_gasto" inputmode="decimal" placeholder="0,00"></label>
             <label>Faturamento bruto (R$)<input type="text" id="f_faturado" inputmode="decimal" placeholder="0,00"></label>
             <label>Compras<input type="text" id="f_compra" inputmode="numeric" placeholder="0"></label>
+            <label>Cliques<input type="text" id="f_cliques" inputmode="numeric" placeholder="0"></label>
+            <label>Visualizações de página<input type="text" id="f_visualizacao" inputmode="numeric" placeholder="0"></label>
+            <label>Checkouts iniciados<input type="text" id="f_finalizacao" inputmode="numeric" placeholder="0"></label>
+            <label>CPM (R$)<input type="text" id="f_cpm" inputmode="decimal" placeholder="0,00"></label>
           </div>
 
           <div class="formrow">
+            <button type="button" class="btn ghost small" id="btnColarDia">⎘ Colar do Meta</button>
             <button type="button" class="btn ghost small" id="btnSomarAds">Σ Somar dos anúncios</button>
             <span class="formhint inline" id="previewDia"></span>
           </div>
-
-          <details class="fgroup">
-            <summary>Funil do Meta</summary>
-            <div class="fgrid">
-              <label>Cliques<input type="text" id="f_cliques" inputmode="numeric" placeholder="0"></label>
-              <label>Visualizações de página<input type="text" id="f_visualizacao" inputmode="numeric" placeholder="0"></label>
-              <label>Checkouts iniciados (IC)<input type="text" id="f_finalizacao" inputmode="numeric" placeholder="0"></label>
-              <label>CPM (R$)<input type="text" id="f_cpm" inputmode="decimal" placeholder="0,00"></label>
-              <label>CPC (R$)<input type="text" id="f_cpc" inputmode="decimal" placeholder="0,00"></label>
-              <label>Perda de tráfego (%)<input type="text" id="f_perda" inputmode="decimal" placeholder="auto"></label>
-            </div>
-          </details>
 
           <details class="fgroup">
             <summary>Checkout &amp; financeiro <span class="fgrouphint">preencha só quando houver</span></summary>
@@ -124,13 +149,15 @@
             <div class="fgrid">
               <label>Compras front-end (R$)<input type="text" id="f_frontend" inputmode="decimal" placeholder="0,00"></label>
               <label>Compras back-end (R$)<input type="text" id="f_backend" inputmode="decimal" placeholder="0,00"></label>
+              <label>CPC (R$)<input type="text" id="f_cpc" inputmode="decimal" placeholder="auto"></label>
+              <label>Perda de tráfego (%)<input type="text" id="f_perda" inputmode="decimal" placeholder="auto"></label>
               <label>Taxa conv. checkout (%)<input type="text" id="f_taxa" inputmode="decimal" placeholder="auto"></label>
               <label>ROAS<input type="text" id="f_roi" inputmode="decimal" placeholder="auto"></label>
             </div>
           </details>
 
           <div class="fgrid">
-            <label class="wide">Observações <span class="fgrouphint">vira anotação nos gráficos: “troquei o criativo”</span><input type="text" id="f_obs" placeholder="opcional"></label>
+            <label class="wide">Observações <span class="fgrouphint">vira anotação no Diário: “troquei o criativo”</span><input type="text" id="f_obs" placeholder="opcional"></label>
           </div>
 
           <div class="formactions">
@@ -140,7 +167,6 @@
         </form>
       </details>
 
-      <!-- ---------- 1. Resultado do negócio ---------- -->
       <section class="block">
         <div class="blockhead">
           <h2>Resultado</h2>
@@ -160,47 +186,51 @@
 
         <div id="veredito"></div>
 
+        <div class="plate chartcard">
+          <h3>Para onde o dinheiro vai <span class="sub">· do faturamento bruto ao lucro no bolso</span></h3>
+          <div id="boxCascata" class="chartbox cascata"><canvas id="chCascata"></canvas></div>
+          <p class="chartfoot" id="cascataFoot"></p>
+        </div>
+
         <div class="chartsgrid">
-          <div class="card chartcard hero">
+          <div class="plate chartcard hero">
             <h3>Lucro por dia <span class="sub">· acima do zero você ganhou dinheiro</span></h3>
-            <div class="chartbox"><canvas id="chLucro"></canvas></div>
-            <p class="chartfoot">Clique numa barra para ver os anúncios daquele dia.</p>
+            <div id="boxLucro" class="chartbox"><canvas id="chLucro"></canvas></div>
+            <p class="chartfoot">Toque numa barra para ver os anúncios daquele dia.</p>
           </div>
-          <div class="card chartcard">
-            <h3>Lucro acumulado</h3>
-            <div class="chartbox"><canvas id="chLucroAcum"></canvas></div>
+          <div class="plate chartcard">
+            <h3>Lucro acumulado <span class="sub">· energia extraída</span></h3>
+            <div id="boxLucroAcum" class="chartbox"><canvas id="chLucroAcum"></canvas></div>
           </div>
-          <div class="card chartcard">
+          <div class="plate chartcard">
             <h3>ROAS <span class="sub" id="roasSub"></span></h3>
-            <div class="chartbox"><canvas id="chRoas"></canvas></div>
-            <p class="chartfoot">Um dia isolado é ruidoso — confie no acumulado.</p>
+            <div id="boxRoas" class="chartbox"><canvas id="chRoas"></canvas></div>
+            <p class="chartfoot" id="roasFoot">Abaixo do horizonte de eventos, nada volta. Um dia isolado é ruidoso — confie no acumulado.</p>
           </div>
-          <div class="card chartcard">
+          <div class="plate chartcard">
             <h3 id="gastoFatTitle">Gasto vs Faturamento</h3>
-            <div class="chartbox"><canvas id="chGastoFat"></canvas></div>
+            <div id="boxGastoFat" class="chartbox"><canvas id="chGastoFat"></canvas></div>
           </div>
         </div>
       </section>
 
-      <!-- ---------- 2. Tráfego ---------- -->
       <section class="block">
         <div class="blockhead"><h2>Tráfego</h2><span class="blocksub" id="trafSub"></span></div>
         <div class="kpis kpis-4 traf" id="kpiTrafego"></div>
       </section>
 
-      <!-- ---------- 3. Funil ---------- -->
       <section class="block">
         <div class="blockhead">
           <h2>Funil &amp; vazamentos</h2>
           <span class="blocksub">agregado do período — taxas de um dia só são ruído</span>
         </div>
         <div class="funilgrid">
-          <div class="card">
+          <div class="plate">
             <h3>Funil do Meta</h3>
             <div class="chartbox funilbox"><canvas id="chFunil"></canvas></div>
             <div class="stattiles" id="funilTaxas"></div>
           </div>
-          <div class="card">
+          <div class="plate">
             <h3>Aprovação no checkout</h3>
             <div class="aprovbig"><span id="aprovPct">—</span><small id="aprovSub">sem vendas iniciadas lançadas</small></div>
             <div class="chartbox aprovbox"><canvas id="chAprov"></canvas></div>
@@ -209,17 +239,16 @@
         </div>
       </section>
 
-      <!-- ---------- 4. Tabela de dias ---------- -->
-      <div class="card">
-        <div class="cardhead"><h3>Todos os dias <span class="sub">· clique numa linha para ver os anúncios do dia</span></h3></div>
+      <div class="plate">
+        <div class="cardhead"><h3>Todos os dias <span class="sub">· toque numa linha para ver os anúncios do dia</span></h3></div>
         <div class="tablewrap"><table id="tblGeral"></table></div>
-        <p class="empty hidden" id="emptyGeral">Nenhum lançamento ainda — use “Lançar dia” acima.</p>
+        <div id="emptyGeral" class="hidden"></div>
       </div>
 
     </section>
 
     <!-- ======================= ANÚNCIOS ======================= -->
-    <section id="tab-anuncios" class="tabpanel hidden">
+    <section id="tab-anuncios" class="tabpanel hidden" role="tabpanel" aria-labelledby="nav-anuncios">
 
       <div class="toolbar">
         <div class="chips" id="periodChipsAds">
@@ -238,36 +267,48 @@
         <button class="btn ghost small" id="btnCsvAds">⬇ CSV</button>
       </div>
 
-      <details class="card formcard" id="formCardAds">
+      <details class="plate formcard" id="formCardAds">
         <summary><span class="plus">＋</span> Lançar anúncio <span class="editing-tag hidden" id="editTagAds">editando</span></summary>
         <form id="formAds" class="metform">
           <div class="fgrid">
-            <label>Data<input type="date" id="a_data" required></label>
-            <label>Anúncio<input type="text" id="a_anuncio" list="adNames" placeholder="nome do anúncio" required></label>
+            <label>Data
+              <input type="date" id="a_data" required>
+              <span class="datachips">
+                <button type="button" class="chip" data-setdata="ontem" data-alvo="a_data">Ontem</button>
+                <button type="button" class="chip" data-setdata="hoje" data-alvo="a_data">Hoje</button>
+              </span>
+            </label>
+            <label>Anúncio<input type="text" id="a_anuncio" list="adNames" placeholder="nome do criativo" required></label>
             <datalist id="adNames"></datalist>
             <label>Status<select id="a_status"><option value="ativo">Ativo</option><option value="pausado">Pausado</option></select></label>
             <label>Gasto (R$)<input type="text" id="a_gasto" inputmode="decimal" placeholder="0,00"></label>
             <label>Faturado (R$)<input type="text" id="a_faturado" inputmode="decimal" placeholder="0,00"></label>
             <label>Compras<input type="text" id="a_compras" inputmode="numeric" placeholder="0"></label>
+            <label>Cliques<input type="text" id="a_cliques" inputmode="numeric" placeholder="0"></label>
+            <label>CPM (R$)<input type="text" id="a_cpm" inputmode="decimal" placeholder="0,00"></label>
           </div>
+
+          <div class="formrow">
+            <button type="button" class="btn ghost small" id="btnColarAds">⎘ Colar criativos do Meta</button>
+            <span class="formhint inline">Cole a tabela inteira do Gerenciador e lance todos os criativos do dia de uma vez.</span>
+          </div>
+
           <details class="fgroup">
-            <summary>Custo e criativo</summary>
+            <summary>Criativo e overrides</summary>
             <div class="fgrid">
-              <label>CPM (R$)<input type="text" id="a_cpm" inputmode="decimal" placeholder="0,00"></label>
-              <label>CPC (R$)<input type="text" id="a_cpc" inputmode="decimal" placeholder="0,00"></label>
-              <label>Cliques<input type="text" id="a_cliques" inputmode="numeric" placeholder="0"></label>
               <label>CTR (%)<input type="text" id="a_ctr" inputmode="decimal" placeholder="0,00"></label>
               <label>Hook Rate 3s (%)<input type="text" id="a_hook" inputmode="decimal" placeholder="0,00"></label>
               <label>Retenção de vídeo (%)<input type="text" id="a_retencao" inputmode="decimal" placeholder="0,00"></label>
               <label>Frequência<input type="text" id="a_frequencia" inputmode="decimal" placeholder="0,00"></label>
+              <label>CPC (R$)<input type="text" id="a_cpc" inputmode="decimal" placeholder="auto"></label>
               <label>Custo por compra (R$)<input type="text" id="a_cpa" inputmode="decimal" placeholder="auto"></label>
               <label>ROAS<input type="text" id="a_roi" inputmode="decimal" placeholder="auto"></label>
             </div>
           </details>
           <div class="fgrid">
-            <label class="wide">Observações <span class="fgrouphint">vira anotação na linha do tempo do anúncio</span><input type="text" id="a_obs" placeholder="opcional"></label>
+            <label class="wide">Observações <span class="fgrouphint">vira anotação no Diário</span><input type="text" id="a_obs" placeholder="opcional"></label>
           </div>
-          <p class="formhint">O anúncio entra no projeto <b id="hintProjAds"></b>. Custo por compra e ROAS são calculados automaticamente — preencha só se quiser sobrescrever.</p>
+          <p class="formhint">O criativo entra no projeto <b id="hintProjAds"></b>. A data continua preenchida depois de salvar — lance todos os criativos do dia em sequência.</p>
           <div class="formactions">
             <button type="submit" class="btn primary" id="btnSalvarAds">Salvar anúncio</button>
             <button type="button" class="btn ghost hidden" id="btnCancelAds">Cancelar edição</button>
@@ -275,19 +316,19 @@
         </form>
       </details>
 
-      <div class="card">
+      <div class="plate">
         <div class="cardhead"><h3>Ranking de anúncios <span class="sub" id="rankPeriodo"></span></h3></div>
         <div class="tablewrap"><table id="tblRanking"></table></div>
-        <p class="empty hidden" id="emptyRanking">Nenhum anúncio lançado ainda — use “Lançar anúncio” acima.</p>
+        <div id="emptyRanking" class="hidden"></div>
       </div>
 
-      <div class="card" id="anaCard">
+      <div class="plate" id="anaCard">
         <div class="cardhead">
           <h3>Análise do anúncio <span class="sub">· histórico completo, dia a dia</span></h3>
-          <select id="anaAd" class="select"></select>
+          <select id="anaAd" class="select" aria-label="Anúncio analisado"></select>
         </div>
 
-        <p class="empty hidden" id="anaEmpty">Lance anúncios para analisar a evolução deles.</p>
+        <div id="anaEmpty" class="hidden"></div>
 
         <div id="anaBody" class="hidden">
           <div class="kpis anakpis" id="anaKpis"></div>
@@ -307,10 +348,10 @@
         </div>
       </div>
 
-      <div class="card chartcard">
+      <div class="plate chartcard">
         <div class="cardhead">
           <h3>Comparação entre anúncios</h3>
-          <select id="cmpMetric" class="select">
+          <select id="cmpMetric" class="select" aria-label="Métrica comparada">
             <option value="gasto">Gasto</option>
             <option value="faturado">Faturado</option>
             <option value="compras">Compras</option>
@@ -328,45 +369,113 @@
         <div class="chartbox tall"><canvas id="chCompare"></canvas></div>
       </div>
 
-      <div class="card">
+      <div class="plate">
         <div class="cardhead">
           <h3>Histórico por dia</h3>
-          <select id="histAdFilter" class="select"><option value="">Todos os anúncios</option></select>
+          <select id="histAdFilter" class="select" aria-label="Filtrar por anúncio"><option value="">Todos os anúncios</option></select>
         </div>
         <div class="tablewrap"><table id="tblAdsHist"></table></div>
-        <p class="empty hidden" id="emptyAdsHist">Nenhum lançamento no período.</p>
+        <div id="emptyAdsHist" class="hidden"></div>
+      </div>
+
+    </section>
+
+    <!-- ======================= DIÁRIO ======================= -->
+    <section id="tab-diario" class="tabpanel hidden" role="tabpanel" aria-labelledby="nav-diario">
+      <div class="blockhead">
+        <h2>Diário de bordo</h2>
+        <span class="blocksub">o que você mudou — e o que aconteceu depois</span>
+      </div>
+      <div class="plate">
+        <div id="diarioFeed" class="feed"></div>
+        <div id="diarioEmpty" class="hidden"></div>
+      </div>
+      <p class="chartfoot">Escreva no campo <b>Observações</b> ao lançar um dia ou um anúncio. Cada anotação vira uma entrada aqui, ao lado do resultado daquele dia.</p>
+    </section>
+
+    <!-- ======================= CONTA ======================= -->
+    <section id="tab-conta" class="tabpanel hidden" role="tabpanel" aria-labelledby="nav-conta">
+
+      <div class="plate">
+        <div class="acct">
+          <div class="acctav" id="acctAvatar">·</div>
+          <div>
+            <div class="acctmail" id="acctMail"></div>
+            <div class="acctsub" id="acctResumo"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="plate">
+        <h4 class="modalsec">Economia do projeto <span id="ecoProjName"></span></h4>
+        <p class="loginsub" style="text-align:left">Digitado uma vez. É o que transforma faturamento em <b>lucro real</b> e define o horizonte de eventos — o ROAS abaixo do qual nada volta.</p>
+        <label class="mrow">Taxa do gateway (%) <input type="text" id="s_taxa" inputmode="decimal"></label>
+        <label class="mrow">Imposto sobre vendas (%) <input type="text" id="s_imposto" inputmode="decimal"></label>
+        <label class="mrow">Custo por venda (R$) <input type="text" id="s_custo" inputmode="decimal"></label>
+        <label class="mrow">Margem alvo (%) <input type="text" id="s_margem" inputmode="decimal"></label>
+        <p class="ecopreview" id="ecoPreview"></p>
+
+        <h4 class="modalsec">Alertas</h4>
+        <label class="mrow">Perda de tráfego máx. (%) <input type="text" id="s_perda" inputmode="decimal"></label>
+        <label class="mrow">CPC/CPM até % acima da média 7d <input type="text" id="s_spike" inputmode="decimal"></label>
+
+        <div class="formactions">
+          <button class="btn primary" id="btnSaveSettings">Salvar configurações</button>
+        </div>
+      </div>
+
+      <div class="plate">
+        <h4 class="modalsec">Projetos</h4>
+        <p class="loginsub" style="text-align:left">Cada projeto tem seus próprios dias, criativos e economia.</p>
+        <div class="formactions">
+          <button class="btn ghost" id="btnNewProj">＋ Novo projeto</button>
+          <button class="btn ghost" id="btnRenameProj">✎ Renomear “<span id="projNomeAtual"></span>”</button>
+          <button class="btn danger" id="btnDelProj">🗑 Excluir projeto</button>
+        </div>
+      </div>
+
+      <div class="plate" id="cardInstalar">
+        <h4 class="modalsec">Aplicativo</h4>
+        <p class="loginsub" style="text-align:left" id="instalarTxt">Instale o Ergosphere na tela de início e abra direto do ícone, em tela cheia.</p>
+        <div class="formactions">
+          <button class="btn ghost" id="btnInstalar">Instalar Ergosphere</button>
+          <button class="btn ghost" id="btnRefazerOnboard">Refazer a introdução</button>
+        </div>
+      </div>
+
+      <div class="plate">
+        <h4 class="modalsec">Sobre o nome</h4>
+        <p class="sobre">
+          A <b>ergosfera</b> é a casca que envolve um buraco negro em rotação, logo fora do
+          <b>horizonte de eventos</b>. Lá dentro o espaço-tempo é arrastado junto com o giro — e é a
+          única região de onde ainda se consegue arrancar energia do sistema e escapar levando ela embora.
+          Roger Penrose provou isso em 1969.
+        </p>
+        <p class="sobre" style="margin-top:12px">
+          É exatamente o que você faz com uma conta de anúncios. O <b>horizonte de eventos</b> aqui é o
+          seu ROAS de equilíbrio: abaixo dele, todo real investido não volta. Acima dele começa a
+          ergosfera — a faixa estreita onde ainda dá pra extrair lucro.
+        </p>
+        <div class="formactions">
+          <button class="btn danger" id="btnLogout">Sair da conta</button>
+        </div>
       </div>
 
     </section>
 
   </main>
+
+  <nav class="nav bottom" role="tablist" id="navBottom"></nav>
+  <button class="fab" id="fabLancar" aria-label="Lançar dia">＋</button>
 </div>
 
-<!-- ===== Modal de configurações ===== -->
-<div id="settingsModal" class="modal hidden">
-  <div class="modalcard">
-    <h3>⚙ Configurações</h3>
+<!-- ===== Onboarding ===== -->
+<div id="onboard" class="onboard hidden"></div>
 
-    <h4 class="modalsec">Economia do projeto <span id="ecoProjName"></span></h4>
-    <p class="loginsub">Digitado uma vez. É o que transforma faturamento em <b>lucro real</b> e define o ponto de equilíbrio.</p>
-    <label class="mrow">Taxa do gateway (%) <input type="text" id="s_taxa" inputmode="decimal"></label>
-    <label class="mrow">Imposto sobre vendas (%) <input type="text" id="s_imposto" inputmode="decimal"></label>
-    <label class="mrow">Custo por venda (R$) <input type="text" id="s_custo" inputmode="decimal"></label>
-    <label class="mrow">Margem alvo (%) <input type="text" id="s_margem" inputmode="decimal"></label>
-    <p class="ecopreview" id="ecoPreview"></p>
+<!-- ===== Sheets (confirm/prompt próprios) ===== -->
+<div id="sheetHost"></div>
 
-    <h4 class="modalsec">Alertas</h4>
-    <label class="mrow">Perda de tráfego máx. (%) <input type="text" id="s_perda" inputmode="decimal"></label>
-    <label class="mrow">CPC/CPM até % acima da média 7d <input type="text" id="s_spike" inputmode="decimal"></label>
-
-    <div class="formactions">
-      <button class="btn primary" id="btnSaveSettings">Salvar</button>
-      <button class="btn ghost" id="btnCloseSettings">Fechar</button>
-    </div>
-  </div>
-</div>
-
-<div id="toasts" class="toasts"></div>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
 <script src="js/app.js"></script>
 </body>
