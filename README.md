@@ -3,8 +3,12 @@
 Dashboard para acompanhar métricas diárias de campanhas Meta Ads.
 
 - **No ar:** https://lucius-brandhuber.github.io/dashboard-metricas/
-- **Backend:** Supabase (projeto `nyuycffqncuavzuhyofq`), tabelas `ads_metricas_diarias` e `ads_anuncios_diarios` com RLS restrito ao dono.
+- **Backend:** Supabase (projeto `nyuycffqncuavzuhyofq`), tabelas `ads_projetos`, `ads_metricas_diarias` e `ads_anuncios_diarios` com RLS restrito ao dono.
 - **Login:** Supabase Auth (email + senha). Dados sincronizam entre celular e desktop.
+
+## Projetos
+
+Cada projeto é uma pasta isolada, com seus próprios dias e anúncios. A barra no topo troca de projeto, cria (＋ Novo), renomeia (✎) e exclui (🗑, com confirmação por digitação do nome). Excluir um projeto apaga todos os dias e anúncios dele. No ranking, o 🗑 de cada linha apaga o anúncio inteiro (todos os dias lançados dele).
 
 ## Estrutura
 

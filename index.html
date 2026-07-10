@@ -48,6 +48,16 @@
 
   <main>
 
+    <!-- ======================= PROJETO ATIVO ======================= -->
+    <div class="projbar">
+      <span class="projlabel">Projeto</span>
+      <select id="projSel" class="select"></select>
+      <button class="btn ghost small" id="btnNewProj">＋ Novo</button>
+      <button class="iconbtn" id="btnRenameProj" title="Renomear projeto">✎</button>
+      <button class="iconbtn danger" id="btnDelProj" title="Excluir projeto">🗑</button>
+      <span class="projcount" id="projCount"></span>
+    </div>
+
     <!-- ======================= VISÃO GERAL ======================= -->
     <section id="tab-geral" class="tabpanel">
 
@@ -68,7 +78,6 @@
         <form id="formGeral" class="metform">
           <div class="fgrid">
             <label>Data<input type="date" id="f_data" required></label>
-            <label>Campanha<input type="text" id="f_campanha" value="principal"></label>
             <label>Gasto (R$)<input type="text" id="f_gasto" inputmode="decimal" placeholder="0,00"></label>
             <label>Faturado (R$)<input type="text" id="f_faturado" inputmode="decimal" placeholder="0,00"></label>
             <label>Compras Front-End (R$)<input type="text" id="f_frontend" inputmode="decimal" placeholder="0,00"></label>
@@ -84,7 +93,7 @@
             <label>ROI<input type="text" id="f_roi" inputmode="decimal" placeholder="auto"></label>
             <label class="wide">Observações<input type="text" id="f_obs" placeholder="opcional"></label>
           </div>
-          <p class="formhint">Taxa de conversão e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
+          <p class="formhint">O dia entra no projeto <b id="hintProjGeral"></b>. Taxa de conversão e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
           <div class="formactions">
             <button type="submit" class="btn primary" id="btnSalvarGeral">Salvar dia</button>
             <button type="button" class="btn ghost hidden" id="btnCancelGeral">Cancelar edição</button>
@@ -129,7 +138,6 @@
             <label>Anúncio<input type="text" id="a_anuncio" list="adNames" placeholder="nome do anúncio" required></label>
             <datalist id="adNames"></datalist>
             <label>Status<select id="a_status"><option value="ativo">Ativo</option><option value="pausado">Pausado</option></select></label>
-            <label>Campanha<input type="text" id="a_campanha" value="principal"></label>
             <label>Gasto (R$)<input type="text" id="a_gasto" inputmode="decimal" placeholder="0,00"></label>
             <label>CPM (R$)<input type="text" id="a_cpm" inputmode="decimal" placeholder="0,00"></label>
             <label>CPC (R$)<input type="text" id="a_cpc" inputmode="decimal" placeholder="0,00"></label>
@@ -144,7 +152,7 @@
             <label>Frequência<input type="text" id="a_frequencia" inputmode="decimal" placeholder="0,00"></label>
             <label class="wide">Observações<input type="text" id="a_obs" placeholder="opcional"></label>
           </div>
-          <p class="formhint">Custo por compra e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
+          <p class="formhint">O anúncio entra no projeto <b id="hintProjAds"></b>. Custo por compra e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
           <div class="formactions">
             <button type="submit" class="btn primary" id="btnSalvarAds">Salvar anúncio</button>
             <button type="button" class="btn ghost hidden" id="btnCancelAds">Cancelar edição</button>

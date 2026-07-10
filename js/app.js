@@ -7,8 +7,10 @@ const SUPABASE_KEY = 'sb_publishable_soW7Jl52hpZYkaJtmDT6tg_4111FV8W';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ---------- Estado ---------- */
-let rows = [];      // ads_metricas_diarias (asc por data)
-let adRows = [];    // ads_anuncios_diarios (asc por data)
+let rows = [];      // ads_metricas_diarias do projeto ativo (asc por data)
+let adRows = [];    // ads_anuncios_diarios do projeto ativo (asc por data)
+let projetos = [];  // nomes de todos os projetos
+let projeto = localStorage.getItem('ads_dash_projeto') || 'principal';
 let period = 0;     // 0 = tudo, 7, 30
 let editingId = null;
 let editingAdId = null;
@@ -325,7 +327,6 @@ function startEditGeral(id) {
   if (!r) return;
   editingId = id;
   $('f_data').value = r.data;
-  $('f_campanha').value = r.campanha || 'principal';
   $('f_gasto').value = numToInput(r.gasto);
   $('f_faturado').value = numToInput(r.faturado);
   $('f_frontend').value = numToInput(r.valor_compras_frontend);
@@ -351,7 +352,6 @@ function resetFormGeral() {
   editingId = null;
   $('formGeral').reset();
   $('f_data').value = todayISO();
-  $('f_campanha').value = 'principal';
   $('editTagGeral').classList.add('hidden');
   $('btnCancelGeral').classList.add('hidden');
   $('btnSalvarGeral').textContent = 'Salvar dia';
@@ -360,7 +360,7 @@ function resetFormGeral() {
 function collectGeral() {
   return {
     data: $('f_data').value,
-    campanha: $('f_campanha').value.trim() || 'principal',
+    campanha: projeto,
     gasto: parseNum($('f_gasto').value),
     faturado: parseNum($('f_faturado').value),
     valor_compras_frontend: parseNum($('f_frontend').value),
@@ -496,18 +496,21 @@ function renderRanking() {
 
   tbl.innerHTML = '<thead><tr>' + COLS_RANK.map(c =>
     `<th data-key="${c.key}">${c.label}${sortRank.key === c.key ? ` <span class="arrow">${sortRank.dir === 1 ? '▲' : '▼'}</span>` : ''}</th>`
-  ).join('') + '</tr></thead><tbody>' +
+  ).join('') + '<th></th></tr></thead><tbody>' +
     ags.map(a => '<tr>' + COLS_RANK.map(c => {
       const v = c.fmt(a);
       const cls = c.cls ? c.cls(a) : '';
       return `<td class="${v === '—' ? 'dim' : cls}">${v}</td>`;
-    }).join('') + '</tr>').join('') + '</tbody>';
+    }).join('') + `<td><div class="rowbtns">
+      <button class="rowbtn del" data-delad="${esc(a.anuncio)}" title="Excluir o anúncio e todos os dias dele">🗑</button>
+    </div></td></tr>`).join('') + '</tbody>';
 
   tbl.querySelectorAll('th[data-key]').forEach(th => th.addEventListener('click', () => {
     const k = th.dataset.key;
     if (sortRank.key === k) sortRank.dir *= -1; else sortRank = { key: k, dir: -1 };
     renderRanking();
   }));
+  tbl.querySelectorAll('[data-delad]').forEach(b => b.addEventListener('click', () => excluirAnuncio(b.dataset.delad)));
   tbl.querySelectorAll('[data-ana]').forEach(b => b.addEventListener('click', () => {
     $('anaAd').value = b.dataset.ana;
     renderAnalise();
@@ -847,7 +850,6 @@ function startEditAd(id) {
   $('a_data').value = r.data;
   $('a_anuncio').value = r.anuncio;
   $('a_status').value = r.status;
-  $('a_campanha').value = r.campanha || 'principal';
   $('a_gasto').value = numToInput(r.gasto);
   $('a_cpm').value = numToInput(r.cpm);
   $('a_cpc').value = numToInput(r.cpc);
@@ -872,7 +874,6 @@ function resetFormAds() {
   editingAdId = null;
   $('formAds').reset();
   $('a_data').value = todayISO();
-  $('a_campanha').value = 'principal';
   $('editTagAds').classList.add('hidden');
   $('btnCancelAds').classList.add('hidden');
   $('btnSalvarAds').textContent = 'Salvar anúncio';
@@ -883,7 +884,7 @@ function collectAds() {
     data: $('a_data').value,
     anuncio: $('a_anuncio').value.trim(),
     status: $('a_status').value,
-    campanha: $('a_campanha').value.trim() || 'principal',
+    campanha: projeto,
     gasto: parseNum($('a_gasto').value),
     cpm: parseNum($('a_cpm').value),
     cpc: parseNum($('a_cpc').value),
@@ -952,6 +953,7 @@ function downloadCSV(filename, headers, lines) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+const slug = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'projeto';
 const csvNum = v => v == null ? '' : String(v).replace('.', ',');
 const csvTxt = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
 
@@ -964,7 +966,7 @@ function exportCsvGeral() {
     csvNum(r.compra), csvNum(r.finalizacao_compra), csvNum(r.cpm), csvNum(r.cpc), csvNum(r.cliques),
     csvNum(r.visualizacao_destino), csvNum(r.perda_trafego), csvNum(r.valor_compras_frontend), csvNum(r.valor_compras_backend), csvTxt(r.observacoes),
   ].join(';'));
-  downloadCSV(`metricas_${todayISO()}.csv`, headers, lines);
+  downloadCSV(`metricas_${slug(projeto)}_${todayISO()}.csv`, headers, lines);
 }
 function exportCsvAds() {
   const list = filterByPeriod(adRows);
@@ -975,7 +977,101 @@ function exportCsvAds() {
     csvNum(r.cliques), csvNum(r.ctr), csvNum(r.compras), csvNum(cpaOf(r)), csvNum(r.faturado), csvNum(adRoiOf(r)),
     csvNum(r.hook_rate), csvNum(r.retencao_video), csvNum(r.frequencia), csvTxt(r.observacoes),
   ].join(';'));
-  downloadCSV(`anuncios_${todayISO()}.csv`, headers, lines);
+  downloadCSV(`anuncios_${slug(projeto)}_${todayISO()}.csv`, headers, lines);
+}
+
+/* =================================================================
+   PROJETOS (cada projeto = uma pasta com seus próprios dias e anúncios)
+================================================================= */
+async function loadProjetos() {
+  const { data, error } = await db.from('ads_projetos').select('nome').order('nome');
+  if (error) { toast('Erro ao carregar projetos: ' + error.message, true); return; }
+  projetos = (data || []).map(p => p.nome);
+  if (!projetos.length) {
+    await db.from('ads_projetos').insert({ nome: 'principal' });
+    projetos = ['principal'];
+  }
+  if (!projetos.includes(projeto)) setProjeto(projetos[0], true);
+  renderProjSelect();
+}
+function setProjeto(nome, silent) {
+  projeto = nome;
+  localStorage.setItem('ads_dash_projeto', nome);
+  selectedAds = null;
+  $('histAdFilter').value = '';
+  if (!silent) renderProjSelect();
+}
+function renderProjSelect() {
+  $('projSel').innerHTML = projetos.map(n => `<option value="${esc(n)}"${n === projeto ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  $('hintProjGeral').textContent = projeto;
+  $('hintProjAds').textContent = projeto;
+  $('btnDelProj').disabled = projetos.length < 2;
+}
+function renderProjCount() {
+  const nAds = adNames().length;
+  $('projCount').textContent =
+    `${rows.length} ${rows.length === 1 ? 'dia' : 'dias'} · ${nAds} ${nAds === 1 ? 'anúncio' : 'anúncios'}`;
+}
+
+async function novoProjeto() {
+  const nome = (prompt('Nome do novo projeto:') || '').trim();
+  if (!nome) return;
+  if (projetos.some(p => p.toLowerCase() === nome.toLowerCase())) return toast('Já existe um projeto com esse nome.', true);
+  const { error } = await db.from('ads_projetos').insert({ nome });
+  if (error) return toast('Erro ao criar: ' + error.message, true);
+  setProjeto(nome, true);
+  await loadProjetos();
+  await loadData();
+  toast(`Projeto "${nome}" criado ✓`);
+}
+
+async function renomearProjeto() {
+  const nome = (prompt('Novo nome do projeto:', projeto) || '').trim();
+  if (!nome || nome === projeto) return;
+  if (projetos.some(p => p.toLowerCase() === nome.toLowerCase())) return toast('Já existe um projeto com esse nome.', true);
+  const antigo = projeto;
+  /* renomeia o projeto e reaponta os lançamentos das duas tabelas */
+  let { error } = await db.from('ads_projetos').update({ nome }).eq('nome', antigo);
+  if (error) return toast('Erro ao renomear: ' + error.message, true);
+  for (const t of ['ads_metricas_diarias', 'ads_anuncios_diarios']) {
+    const r = await db.from(t).update({ campanha: nome }).eq('campanha', antigo);
+    if (r.error) return toast('Erro ao mover lançamentos: ' + r.error.message, true);
+  }
+  setProjeto(nome, true);
+  await loadProjetos();
+  await loadData();
+  toast(`Renomeado para "${nome}" ✓`);
+}
+
+async function excluirProjeto() {
+  if (projetos.length < 2) return toast('Você precisa ter pelo menos um projeto.', true);
+  const nAds = adNames().length;
+  if (!confirm(`Excluir o projeto "${projeto}"?\n\nIsso apaga ${rows.length} dia(s) e ${nAds} anúncio(s) — não dá pra desfazer.`)) return;
+  if ((prompt(`Para confirmar, digite o nome do projeto:`) || '').trim() !== projeto) return toast('Nome não confere — nada foi excluído.');
+  for (const t of ['ads_metricas_diarias', 'ads_anuncios_diarios']) {
+    const r = await db.from(t).delete().eq('campanha', projeto);
+    if (r.error) return toast('Erro ao excluir: ' + r.error.message, true);
+  }
+  const { error } = await db.from('ads_projetos').delete().eq('nome', projeto);
+  if (error) return toast('Erro ao excluir: ' + error.message, true);
+  const nome = projeto;
+  resetFormGeral(); resetFormAds();
+  setProjeto(projetos.find(p => p !== projeto), true);
+  await loadProjetos();
+  await loadData();
+  toast(`Projeto "${nome}" excluído`);
+}
+
+/* apaga o anúncio inteiro (todos os dias dele) dentro do projeto ativo */
+async function excluirAnuncio(nome) {
+  const dias = adRows.filter(r => r.anuncio === nome).length;
+  if (!confirm(`Excluir o anúncio "${nome}" e todos os ${dias} dia(s) lançados dele?`)) return;
+  const { error } = await db.from('ads_anuncios_diarios').delete().eq('campanha', projeto).eq('anuncio', nome);
+  if (error) return toast('Erro ao excluir: ' + error.message, true);
+  if (editingAdId && adRows.some(r => r.id === editingAdId && r.anuncio === nome)) resetFormAds();
+  if (selectedAds) selectedAds.delete(nome);
+  toast(`Anúncio "${nome}" excluído`);
+  await loadData();
 }
 
 /* =================================================================
@@ -983,8 +1079,8 @@ function exportCsvAds() {
 ================================================================= */
 async function loadData() {
   const [g, a] = await Promise.all([
-    db.from('ads_metricas_diarias').select('*').order('data', { ascending: true }),
-    db.from('ads_anuncios_diarios').select('*').order('data', { ascending: true }),
+    db.from('ads_metricas_diarias').select('*').eq('campanha', projeto).order('data', { ascending: true }),
+    db.from('ads_anuncios_diarios').select('*').eq('campanha', projeto).order('data', { ascending: true }),
   ]);
   if (g.error) { toast('Erro ao carregar: ' + g.error.message, true); return; }
   if (a.error) { toast('Erro ao carregar: ' + a.error.message, true); return; }
@@ -1003,6 +1099,7 @@ function coerceAd(r) {
   return r;
 }
 function renderAll() {
+  renderProjCount();
   renderKpis();
   renderCharts();
   renderTableGeral();
@@ -1024,6 +1121,7 @@ function showLogin() {
 async function enterApp() {
   $('login').classList.add('hidden');
   $('app').classList.remove('hidden');
+  await loadProjetos();
   await loadData();
   $('splash').classList.add('hidden');
 }
@@ -1060,6 +1158,16 @@ async function boot() {
     syncPeriodChips();
     renderAll();
   }));
+
+  /* projetos */
+  $('projSel').addEventListener('change', async () => {
+    setProjeto($('projSel').value);
+    resetFormGeral(); resetFormAds();
+    await loadData();
+  });
+  $('btnNewProj').addEventListener('click', novoProjeto);
+  $('btnRenameProj').addEventListener('click', renomearProjeto);
+  $('btnDelProj').addEventListener('click', excluirProjeto);
 
   /* csv */
   $('btnCsvGeral').addEventListener('click', exportCsvGeral);
