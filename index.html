@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0f">
+<title>Métricas — Tráfego Pago</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<!-- ===== Splash ===== -->
+<div id="splash" class="splash"><div class="spinner"></div></div>
+
+<!-- ===== Login ===== -->
+<div id="login" class="login hidden">
+  <form id="loginForm" class="logincard" autocomplete="on">
+    <div class="loginlogo">📊</div>
+    <h1>Métricas — Tráfego Pago</h1>
+    <p class="loginsub">Entre para acessar seu dashboard</p>
+    <input type="email" id="loginEmail" value="luciusbrandhuber2@gmail.com" autocomplete="username" readonly>
+    <input type="password" id="loginPass" placeholder="Senha" autocomplete="current-password" required>
+    <button type="submit" class="btn primary" id="loginBtn">Entrar</button>
+    <p id="loginErr" class="loginerr hidden"></p>
+  </form>
+</div>
+
+<!-- ===== App ===== -->
+<div id="app" class="app hidden">
+
+  <header class="topbar">
+    <div class="brand">📊 <span>Métricas</span></div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="geral" role="tab">Visão Geral</button>
+      <button class="tab" data-tab="anuncios" role="tab">Anúncios</button>
+    </nav>
+    <div class="topactions">
+      <button class="iconbtn" id="btnSettings" title="Configurar alertas">⚙</button>
+      <button class="iconbtn" id="btnLogout" title="Sair">⏻</button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ======================= VISÃO GERAL ======================= -->
+    <section id="tab-geral" class="tabpanel">
+
+      <div class="toolbar">
+        <div class="chips" id="periodChips">
+          <button class="chip" data-days="7">7 dias</button>
+          <button class="chip" data-days="30">30 dias</button>
+          <button class="chip active" data-days="0">Tudo</button>
+        </div>
+        <button class="btn ghost small" id="btnCsvGeral">⬇ CSV</button>
+      </div>
+
+      <div class="kpis" id="kpiGrid"></div>
+
+      <details class="card formcard" id="formCardGeral">
+        <summary><span class="plus">＋</span> Lançar dia <span class="editing-tag hidden" id="editTagGeral">editando</span></summary>
+        <form id="formGeral" class="metform">
+          <div class="fgrid">
+            <label>Data<input type="date" id="f_data" required></label>
+            <label>Campanha<input type="text" id="f_campanha" value="principal"></label>
+            <label>Gasto (R$)<input type="text" id="f_gasto" inputmode="decimal" placeholder="0,00"></label>
+            <label>Faturado (R$)<input type="text" id="f_faturado" inputmode="decimal" placeholder="0,00"></label>
+            <label>Compras Front-End (R$)<input type="text" id="f_frontend" inputmode="decimal" placeholder="0,00"></label>
+            <label>Compras Back-End (R$)<input type="text" id="f_backend" inputmode="decimal" placeholder="0,00"></label>
+            <label>CPM (R$)<input type="text" id="f_cpm" inputmode="decimal" placeholder="0,00"></label>
+            <label>Cliques<input type="text" id="f_cliques" inputmode="numeric" placeholder="0"></label>
+            <label>CPC (R$)<input type="text" id="f_cpc" inputmode="decimal" placeholder="0,00"></label>
+            <label>Visualização de Destino<input type="text" id="f_visualizacao" inputmode="numeric" placeholder="0"></label>
+            <label>Perda de Tráfego (%)<input type="text" id="f_perda" inputmode="decimal" placeholder="0"></label>
+            <label>Finalização de Compra<input type="text" id="f_finalizacao" inputmode="numeric" placeholder="0"></label>
+            <label>Compras<input type="text" id="f_compra" inputmode="numeric" placeholder="0"></label>
+            <label>Taxa Conv. Checkout (%)<input type="text" id="f_taxa" inputmode="decimal" placeholder="auto"></label>
+            <label>ROI<input type="text" id="f_roi" inputmode="decimal" placeholder="auto"></label>
+            <label class="wide">Observações<input type="text" id="f_obs" placeholder="opcional"></label>
+          </div>
+          <p class="formhint">Taxa de conversão e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
+          <div class="formactions">
+            <button type="submit" class="btn primary" id="btnSalvarGeral">Salvar dia</button>
+            <button type="button" class="btn ghost hidden" id="btnCancelGeral">Cancelar edição</button>
+          </div>
+        </form>
+      </details>
+
+      <div class="chartsgrid">
+        <div class="card chartcard"><h3>Gasto vs Faturado</h3><div class="chartbox"><canvas id="chGastoFat"></canvas></div></div>
+        <div class="card chartcard"><h3>ROI</h3><div class="chartbox"><canvas id="chRoi"></canvas></div></div>
+        <div class="card chartcard"><h3>CPC</h3><div class="chartbox"><canvas id="chCpc"></canvas></div></div>
+        <div class="card chartcard"><h3>CPM</h3><div class="chartbox"><canvas id="chCpm"></canvas></div></div>
+        <div class="card chartcard"><h3>Taxa de Conversão do Checkout</h3><div class="chartbox"><canvas id="chTaxa"></canvas></div></div>
+      </div>
+
+      <div class="card">
+        <div class="cardhead"><h3>Todos os dias</h3></div>
+        <div class="tablewrap"><table id="tblGeral"></table></div>
+        <p class="empty hidden" id="emptyGeral">Nenhum lançamento ainda — use “Lançar dia” acima.</p>
+      </div>
+
+    </section>
+
+    <!-- ======================= ANÚNCIOS ======================= -->
+    <section id="tab-anuncios" class="tabpanel hidden">
+
+      <div class="toolbar">
+        <div class="chips" id="periodChipsAds">
+          <button class="chip" data-days="7">7 dias</button>
+          <button class="chip" data-days="30">30 dias</button>
+          <button class="chip active" data-days="0">Tudo</button>
+        </div>
+        <button class="btn ghost small" id="btnCsvAds">⬇ CSV</button>
+      </div>
+
+      <details class="card formcard" id="formCardAds">
+        <summary><span class="plus">＋</span> Lançar anúncio <span class="editing-tag hidden" id="editTagAds">editando</span></summary>
+        <form id="formAds" class="metform">
+          <div class="fgrid">
+            <label>Data<input type="date" id="a_data" required></label>
+            <label>Anúncio<input type="text" id="a_anuncio" list="adNames" placeholder="nome do anúncio" required></label>
+            <datalist id="adNames"></datalist>
+            <label>Status<select id="a_status"><option value="ativo">Ativo</option><option value="pausado">Pausado</option></select></label>
+            <label>Campanha<input type="text" id="a_campanha" value="principal"></label>
+            <label>Gasto (R$)<input type="text" id="a_gasto" inputmode="decimal" placeholder="0,00"></label>
+            <label>CPM (R$)<input type="text" id="a_cpm" inputmode="decimal" placeholder="0,00"></label>
+            <label>CPC (R$)<input type="text" id="a_cpc" inputmode="decimal" placeholder="0,00"></label>
+            <label>Cliques<input type="text" id="a_cliques" inputmode="numeric" placeholder="0"></label>
+            <label>CTR (%)<input type="text" id="a_ctr" inputmode="decimal" placeholder="0,00"></label>
+            <label>Compras<input type="text" id="a_compras" inputmode="numeric" placeholder="0"></label>
+            <label>Custo por Compra (R$)<input type="text" id="a_cpa" inputmode="decimal" placeholder="auto"></label>
+            <label>Faturado (R$)<input type="text" id="a_faturado" inputmode="decimal" placeholder="0,00"></label>
+            <label>ROI<input type="text" id="a_roi" inputmode="decimal" placeholder="auto"></label>
+            <label>Hook Rate 3s (%)<input type="text" id="a_hook" inputmode="decimal" placeholder="0,00"></label>
+            <label>Retenção de Vídeo (%)<input type="text" id="a_retencao" inputmode="decimal" placeholder="0,00"></label>
+            <label>Frequência<input type="text" id="a_frequencia" inputmode="decimal" placeholder="0,00"></label>
+            <label class="wide">Observações<input type="text" id="a_obs" placeholder="opcional"></label>
+          </div>
+          <p class="formhint">Custo por compra e ROI são calculados automaticamente — preencha só se quiser sobrescrever.</p>
+          <div class="formactions">
+            <button type="submit" class="btn primary" id="btnSalvarAds">Salvar anúncio</button>
+            <button type="button" class="btn ghost hidden" id="btnCancelAds">Cancelar edição</button>
+          </div>
+        </form>
+      </details>
+
+      <div class="card">
+        <div class="cardhead"><h3>Ranking de anúncios <span class="sub" id="rankPeriodo"></span></h3></div>
+        <div class="tablewrap"><table id="tblRanking"></table></div>
+        <p class="empty hidden" id="emptyRanking">Nenhum anúncio lançado ainda — use “Lançar anúncio” acima.</p>
+      </div>
+
+      <div class="card chartcard">
+        <div class="cardhead">
+          <h3>Comparação entre anúncios</h3>
+          <select id="cmpMetric" class="select">
+            <option value="roi">ROI</option>
+            <option value="gasto">Gasto</option>
+            <option value="cpc">CPC</option>
+            <option value="cpm">CPM</option>
+            <option value="ctr">CTR</option>
+            <option value="compras">Compras</option>
+            <option value="cpa">Custo por Compra</option>
+            <option value="faturado">Faturado</option>
+            <option value="hook_rate">Hook Rate</option>
+            <option value="retencao_video">Retenção</option>
+            <option value="frequencia">Frequência</option>
+          </select>
+        </div>
+        <div class="chips wrap" id="cmpAds"></div>
+        <div class="chartbox tall"><canvas id="chCompare"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="cardhead">
+          <h3>Histórico por dia</h3>
+          <select id="histAdFilter" class="select"><option value="">Todos os anúncios</option></select>
+        </div>
+        <div class="tablewrap"><table id="tblAdsHist"></table></div>
+        <p class="empty hidden" id="emptyAdsHist">Nenhum lançamento no período.</p>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+<!-- ===== Modal de alertas ===== -->
+<div id="settingsModal" class="modal hidden">
+  <div class="modalcard">
+    <h3>⚙ Alertas</h3>
+    <p class="loginsub">Limites que pintam as métricas de vermelho/amarelo.</p>
+    <label class="mrow">ROI mínimo <input type="text" id="s_roi" inputmode="decimal"></label>
+    <label class="mrow">Perda de tráfego máx. (%) <input type="text" id="s_perda" inputmode="decimal"></label>
+    <label class="mrow">CPC/CPM até % acima da média 7d <input type="text" id="s_spike" inputmode="decimal"></label>
+    <div class="formactions">
+      <button class="btn primary" id="btnSaveSettings">Salvar</button>
+      <button class="btn ghost" id="btnCloseSettings">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
