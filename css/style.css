@@ -651,6 +651,75 @@ tr.expandrow:hover td { background: var(--void); }
 .sobre { color: var(--text-2); font-size: 13.5px; line-height: 1.6; }
 .sobre b { color: var(--text); }
 
+/* =====================================================================
+   ONDA 3
+===================================================================== */
+
+/* Constelação de dias — 12 colunas de 7 quadrados, preenchidas por coluna.
+   O ouro só aparece como contorno do dia de hoje: é um localizador, não um valor. */
+.constgrid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr); gap: 3px; }
+.constgrid i, .constleg i {
+  width: 100%; aspect-ratio: 1; border-radius: 3px;
+  background: var(--plate-inset); border: 1px solid var(--hair);
+}
+.constgrid i[data-dia] { cursor: pointer; }
+.constgrid i[data-dia]:hover { border-color: var(--hair-strong); }
+.constgrid i.futuro { opacity: .18; }
+.constgrid i.vazio { background: var(--plate-2); border-color: var(--muted-dim); }
+.constgrid i.hoje { outline: 1px solid var(--gold); outline-offset: 1px; }
+.constgrid i.good.n1, .constleg i.good.n1 { background: rgba(52, 199, 89, .16); border-color: rgba(52, 199, 89, .26); }
+.constgrid i.good.n2, .constleg i.good.n2 { background: rgba(52, 199, 89, .34); border-color: rgba(52, 199, 89, .48); }
+.constgrid i.good.n3, .constleg i.good.n3 { background: rgba(52, 199, 89, .62); border-color: rgba(52, 199, 89, .8); }
+.constgrid i.bad.n1, .constleg i.bad.n1 { background: rgba(230, 103, 103, .16); border-color: rgba(230, 103, 103, .26); }
+.constgrid i.bad.n2, .constleg i.bad.n2 { background: rgba(230, 103, 103, .34); border-color: rgba(230, 103, 103, .48); }
+.constgrid i.bad.n3, .constleg i.bad.n3 { background: rgba(230, 103, 103, .62); border-color: rgba(230, 103, 103, .8); }
+.constleg {
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  margin-top: 12px; font-size: 10.5px; color: var(--muted);
+}
+.constleg i { width: 11px; aspect-ratio: 1; flex: 0 0 auto; }
+.constleg span:first-child { margin-right: 4px; }
+.constleg span:last-child { margin-left: 4px; }
+
+/* Fuga gravitacional */
+.stattiles.fuga3 { margin-top: 0; }
+.statv.bad { color: var(--bad); }
+.statv.warn { color: var(--warn); }
+.stat .statv small { display: block; font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+
+/* Massa da oferta — duas fatias não valem um canvas */
+.massabar { display: flex; height: 26px; border-radius: 7px; overflow: hidden; background: var(--plate-inset); }
+.massabar .mf { background: var(--s1); }
+.massabar .mb { background: var(--s2); }
+.massaleg { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: 12.5px; color: var(--text-2); }
+.massaleg span { display: inline-flex; align-items: center; gap: 7px; }
+.massaleg b { color: var(--text); font-variant-numeric: tabular-nums; }
+.massaleg i { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.massaleg i.mf { background: var(--s1); }
+.massaleg i.mb { background: var(--s2); }
+
+/* ⌘K — paleta de comandos */
+.modal.cmdk { align-items: flex-start; padding-top: 12vh; }
+.sheet.cmdk { max-width: 520px; padding: 16px; }
+.sheet.cmdk input { margin-bottom: 10px; }
+.cmdlist { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow-y: auto; }
+.cmdlist li {
+  display: flex; align-items: center; gap: 12px; padding: 11px 12px;
+  border-radius: 9px; cursor: pointer; font-size: 14px; min-height: 44px;
+}
+.cmdlist li.on { background: var(--plate-2); box-shadow: inset 0 0 0 1px var(--gold-dim); }
+.cmdlist li:hover { background: var(--plate-2); }
+.cmdico { width: 20px; text-align: center; color: var(--gold); flex-shrink: 0; }
+.cmdt { flex: 1 1 auto; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdsub { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+.cmdlist li.cmdvazio { color: var(--muted); cursor: default; justify-content: center; }
+.cmdlist li.cmdvazio:hover { background: none; }
+kbd {
+  font: 600 11px/1 ui-monospace, monospace; color: var(--text-2);
+  background: var(--plate-inset); border: 1px solid var(--hair-strong);
+  border-radius: 5px; padding: 3px 5px;
+}
+
 /* ===== Tabelas ===== */
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; white-space: nowrap; font-size: 13.5px; }
@@ -769,7 +838,7 @@ td .rowbtns { display: flex; gap: 8px; justify-content: flex-end; }
 .sheet { animation: sheetup .2s var(--ease); }
 
 @media (max-width: 640px) {
-  .modal { align-items: flex-end; padding: 0; }
+  .modal, .modal.cmdk { align-items: flex-end; padding: 0; }
   .modalcard, .sheet {
     max-width: none; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding-bottom: calc(22px + env(safe-area-inset-bottom));

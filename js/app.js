@@ -289,31 +289,38 @@ const ergozonesPlugin = {
   },
 };
 
-/* linha de referência horizontal (breakeven, zero) */
+/* linhas de referência horizontais (breakeven, zero, limiar de pico).
+   Aceita {y,...} ou {linhas:[{y,...}]} — só dados puros, nunca função. */
 const reflinePlugin = {
   id: 'refline',
   afterDatasetsDraw(chart) {
     const opt = chart.options.plugins?.refline;
-    if (!opt || opt.y == null) return;
+    if (!opt) return;
+    const linhas = Array.isArray(opt.linhas) ? opt.linhas : (opt.y != null ? [opt] : []);
     const { ctx, chartArea, scales } = chart;
-    const y = scales.y.getPixelForValue(opt.y);
-    if (y < chartArea.top || y > chartArea.bottom) return;
-    ctx.save();
-    ctx.strokeStyle = opt.color || C.ref;
-    if (opt.dash !== false) ctx.setLineDash([5, 5]);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(chartArea.left, y);
-    ctx.lineTo(chartArea.right, y);
-    ctx.stroke();
-    if (opt.label) {
-      ctx.setLineDash([]);
-      ctx.fillStyle = C.muted;
-      ctx.font = '600 10px Inter, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(opt.label, chartArea.right - 2, y - 4);
+    for (const l of linhas) {
+      if (l.y == null) continue;
+      const y = scales.y.getPixelForValue(l.y);
+      if (y < chartArea.top || y > chartArea.bottom) continue;
+      ctx.save();
+      ctx.strokeStyle = l.color || C.ref;
+      if (l.dash !== false) ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(chartArea.left, y);
+      ctx.lineTo(chartArea.right, y);
+      ctx.stroke();
+      if (l.label) {
+        ctx.setLineDash([]);
+        ctx.fillStyle = l.labelColor || C.muted;
+        ctx.font = '600 10px Inter, sans-serif';
+        /* o dado mais recente vive na borda direita; um rótulo à esquerda não colide com ele */
+        const esquerda = l.align === 'left';
+        ctx.textAlign = esquerda ? 'left' : 'right';
+        ctx.fillText(l.label, esquerda ? chartArea.left + 3 : chartArea.right - 2, y - 4);
+      }
+      ctx.restore();
     }
-    ctx.restore();
   },
 };
 
@@ -412,11 +419,14 @@ function baseOptions(fmt, extra) {
   };
 }
 function lineDataset(label, data, color, fillArea, spanGaps) {
+  /* com 50 dias na tela, ponto de raio 4 vira uma lagarta e some a linha.
+     O hover continua funcionando: a interação é por índice, não por ponto. */
+  const r = data.length > 45 ? 0 : data.length > 24 ? 2 : 4;
   return {
     label, data, borderColor: color, backgroundColor: fillArea ? color + '1a' : color,
     borderWidth: 2, tension: 0.25, fill: !!fillArea, spanGaps: spanGaps !== false,
-    pointRadius: 4, pointBackgroundColor: color, pointBorderColor: C.card, pointBorderWidth: 2,
-    pointHoverRadius: 6, pointHoverBorderWidth: 2,
+    pointRadius: r, pointBackgroundColor: color, pointBorderColor: C.card, pointBorderWidth: r ? 2 : 0,
+    pointHoverRadius: Math.max(5, r + 2), pointHoverBorderWidth: 2,
   };
 }
 function barBase(extra) {
@@ -434,7 +444,7 @@ function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete chart
 
 /* Abaixo disto, uma série temporal é um ponto solto — parece bug, não dado. */
 const MIN_DIAS_GRAFICO = 3;
-function placeholderGrafico(boxId, canvasId, faltam) {
+function placeholderGrafico(boxId, canvasId, faltam, minimo = MIN_DIAS_GRAFICO) {
   const box = $(boxId);
   if (!box) return;
   destroyChart(canvasId);
@@ -442,7 +452,7 @@ function placeholderGrafico(boxId, canvasId, faltam) {
   if (el) Chart.getChart(el)?.destroy();
   box.classList.add('chartwait');
   box.innerHTML = `<div class="accretion sm" style="opacity:.32"></div>
-    <span>O gráfico acende com ${MIN_DIAS_GRAFICO} dias lançados.<br>
+    <span>O gráfico acende com ${minimo} dias lançados.<br>
     ${faltam === 1 ? 'Falta 1 dia.' : `Faltam ${faltam} dias.`}</span>`;
 }
 function restaurarCanvas(boxId, canvasId) {
@@ -813,6 +823,313 @@ function renderFunil() {
       },
     },
   });
+}
+
+/* =================================================================
+   ONDA 3 — profundidade
+
+   Quatro leituras que só ficam honestas com o tempo, e uma que o
+   volume dele já sustenta hoje (a pressão do leilão, que não depende
+   de conversão nenhuma).
+================================================================= */
+
+/* ---------------------------------------------------------------
+   CONSTELAÇÃO DE DIAS — o calendário de lucro.
+   Sem Chart.js: são 84 quadrados, não um gráfico.
+--------------------------------------------------------------- */
+const SEMANAS_CONST = 12;
+function renderConstelacao() {
+  const grid = $('constGrid');
+  if (!grid) return;
+
+  const porData = new Map(rows.map(r => [r.data, r]));
+  const hoje = todayISO();
+  /* a última coluna termina no sábado da semana corrente */
+  const fim = isoAdd(hoje, 6 - isoToDate(hoje).getDay());
+  const ini = isoAdd(fim, -(SEMANAS_CONST * 7 - 1));
+
+  const abs = rows.map(lucroOf).filter(v => v != null).map(Math.abs);
+  const maxAbs = abs.length ? Math.max(...abs) : 0;
+  const nivel = v => maxAbs > 0 ? Math.max(1, Math.ceil((Math.abs(v) / maxAbs) * 3)) : 1;
+
+  const cels = [];
+  let lancados = 0, azuis = 0, vermelhos = 0;
+  for (let i = 0; i < SEMANAS_CONST * 7; i++) {
+    const d = isoAdd(ini, i);
+    if (d > hoje) { cels.push('<i class="futuro"></i>'); continue; }
+    const r = porData.get(d);
+    const l = r ? lucroOf(r) : null;
+    let cls = '';
+    if (r) { lancados++; if (l == null) cls = 'vazio'; else if (l >= 0) { azuis++; cls = 'good n' + nivel(l); } else { vermelhos++; cls = 'bad n' + nivel(l); } }
+    cels.push(`<i class="${cls}${d === hoje ? ' hoje' : ''}" data-dia="${d}" tabindex="0" role="button"
+      title="${fmtData(d)} · ${r ? (l == null ? 'lançado, sem lucro calculável' : fmtBRL(l)) : 'sem lançamento — toque para lançar'}"></i>`);
+  }
+  grid.innerHTML = cels.join('');
+
+  $('constFoot').innerHTML = lancados
+    ? `${lancados} ${lancados === 1 ? 'dia lançado' : 'dias lançados'} em ${SEMANAS_CONST} semanas · <b class="up">${azuis} no azul</b> · <b class="down">${vermelhos} no vermelho</b>. Toque num quadrado vazio para lançar aquele dia.`
+    : `Nenhum dia lançado nas últimas ${SEMANAS_CONST} semanas. Toque num quadrado para começar.`;
+
+  grid.querySelectorAll('i[data-dia]').forEach(c => {
+    const ir = () => {
+      const d = c.dataset.dia;
+      if (porData.has(d)) { toggleDia(d); $('tblGeral').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      else abrirFormDia(d);
+    };
+    c.addEventListener('click', ir);
+    c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ir(); } });
+  });
+}
+
+/* ---------------------------------------------------------------
+   PRESSÃO DO LEILÃO — CPM e CPC contra a própria média móvel.
+   A leitura MENOS ruidosa da conta: não depende de conversão, e a
+   ~1000 cliques/dia a amostra é grande. Por isso é em %, e não em R$:
+   CPM (R$30) e CPC (R$0,67) não cabem no mesmo eixo.
+--------------------------------------------------------------- */
+const MIN_DIAS_PRESSAO = 5;
+function desvioDaMedia(list, get) {
+  const vals = list.map(get);
+  return vals.map((v, i) => {
+    if (v == null) return null;
+    const prev = [];
+    for (let j = i - 1; j >= 0 && prev.length < 7; j--) if (vals[j] != null) prev.push(vals[j]);
+    if (prev.length < 2) return null;             // média de 1 dia não é média
+    const m = avg(prev);
+    return m > 0 ? ((v / m) - 1) * 100 : null;
+  });
+}
+function renderPressao() {
+  if (!$('boxPressao')) return;
+  const list = filterByPeriod(rows);
+  if (list.length < MIN_DIAS_PRESSAO) {
+    placeholderGrafico('boxPressao', 'chPressao', MIN_DIAS_PRESSAO - list.length, MIN_DIAS_PRESSAO);
+    $('pressaoFoot').textContent = 'Cada dia é comparado com a média dos dias anteriores — por isso são precisos alguns dias antes.';
+    return;
+  }
+  restaurarCanvas('boxPressao', 'chPressao');
+
+  const labels = list.map(r => fmtDataCurta(r.data));
+  const cpm = desvioDaMedia(list, r => r.cpm);
+  const cpc = desvioDaMedia(list, cpcOf);
+  const lim = settings.spikePct;
+
+  const opts = baseOptions(v => (v >= 0 ? '+' : '') + nf0.format(v) + '%', {
+    plugins: {
+      legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8, color: C.text2 } },
+      /* o limiar é ouro porque é limiar; as séries nunca são */
+      refline: { linhas: [{ y: 0, color: C.zero, dash: false }, { y: lim, color: C.goldDim, label: `PICO +${nf0.format(lim)}%`, labelColor: C.gold, align: 'left' }] },
+    },
+    y: { beginAtZero: false, suggestedMin: -lim, suggestedMax: lim * 1.4 },
+  });
+  makeChart('chPressao', {
+    type: 'line',
+    data: { labels, datasets: [lineDataset('CPM', cpm, SERIES[0], false, false), lineDataset('CPC', cpc, SERIES[2], false, false)] },
+    options: opts,
+  });
+
+  const ult = s => { for (let k = s.length - 1; k >= 0; k--) if (s[k] != null) return s[k]; return null; };
+  const uCpm = ult(cpm), uCpc = ult(cpc);
+  /* a informação está na DIVERGÊNCIA entre os dois: o CPM é o preço do leilão,
+     o CPC é o preço do leilão dividido pelo quanto o criativo convence a clicar. */
+  let leitura = '';
+  if (uCpm != null && uCpm > lim) leitura = ' O leilão está caro hoje: você paga mais pela mesma impressão, e isso não é culpa do criativo.';
+  else if (uCpc != null && uCpc > lim) leitura = ' O CPM não subiu, mas o clique subiu: menos gente clica no que você mostra. É o criativo cansando, não o mercado.';
+  else if (uCpm != null && uCpm < -10) leitura = ' O leilão está barato hoje — é a hora de comprar volume.';
+  else if (uCpm != null) leitura = ' Nenhuma pressão anormal no leilão.';
+
+  const sinal = v => v == null ? '—' : (v >= 0 ? '+' : '') + nf2.format(v) + '%';
+  const cor = v => v == null ? '' : v > lim ? 'down' : v < -10 ? 'up' : '';
+  $('pressaoFoot').innerHTML =
+    `Zero é a média dos dias anteriores. Último dia: CPM <b class="${cor(uCpm)}">${sinal(uCpm)}</b>, CPC <b class="${cor(uCpc)}">${sinal(uCpc)}</b>.${leitura}`;
+}
+
+/* ---------------------------------------------------------------
+   FUGA GRAVITACIONAL — o dinheiro que entrou e escapou,
+   e o que ainda pode entrar (pix não pago, boleto em aberto).
+--------------------------------------------------------------- */
+function renderFuga() {
+  const box = $('fugaBody');
+  if (!box) return;
+  const list = filterByPeriod(rows);
+  let reemb = 0, charge = 0, pend = 0, bruto = 0;
+  for (const r of list) {
+    reemb += num(r.vendas_reembolsadas); charge += num(r.vendas_chargeback);
+    pend += num(r.vendas_pendentes); bruto += num(r.faturado);
+  }
+  const escapou = reemb + charge;
+
+  if (!escapou && !pend) {
+    box.innerHTML = `<p class="chartfoot" style="margin:0">Nada escapou no período — ou nada foi lançado.
+      Preencha <b>Reembolsos</b>, <b>Chargeback</b> e <b>Vendas pendentes</b> ao lançar o dia:
+      é a diferença entre o que o Meta diz que você vendeu e o que o banco realmente pagou.</p>`;
+    return;
+  }
+  const pct = v => bruto > 0 ? ` <small>${nf2.format((v / bruto) * 100)}% do bruto</small>` : '';
+  box.innerHTML = `<div class="stattiles fuga3">
+      <div class="stat"><span class="statl">Reembolsos</span><span class="statv ${reemb ? 'bad' : ''}">${fmtBRL(reemb)}</span></div>
+      <div class="stat"><span class="statl">Chargeback</span><span class="statv ${charge ? 'bad' : ''}">${fmtBRL(charge)}</span></div>
+      <div class="stat"><span class="statl">Ainda pode entrar</span><span class="statv ${pend ? 'warn' : ''}">${fmtBRL(pend)}</span></div>
+    </div>
+    <p class="chartfoot">Escapou depois de entrar: <b class="down">${fmtBRL(escapou)}</b>${pct(escapou)}.
+    ${pend ? `Pendente de pagamento: <b>${fmtBRL(pend)}</b> — pix não pago e boleto em aberto ainda podem virar receita.` : ''}
+    ${escapou > 0 && bruto > 0 && (escapou / bruto) > 0.08 ? ' Mais de 8% do bruto voltando é problema de oferta ou de cobrança, não de anúncio.' : ''}</p>`;
+}
+
+/* ---------------------------------------------------------------
+   MASSA DA OFERTA — front-end vs back-end.
+   Barra em CSS: são duas fatias, não vale um canvas.
+--------------------------------------------------------------- */
+function renderMassa() {
+  const box = $('massaBody');
+  if (!box) return;
+  const list = filterByPeriod(rows);
+  let front = 0, back = 0;
+  for (const r of list) { front += num(r.valor_compras_frontend); back += num(r.valor_compras_backend); }
+  const total = front + back;
+
+  if (!total) {
+    box.innerHTML = `<p class="chartfoot" style="margin:0">Preencha <b>Compras front-end</b> e <b>Compras back-end</b>
+      ao lançar o dia. É o que revela se a sua oferta vive só da primeira venda —
+      e quanto o tráfego pago pode custar sem quebrar a conta.</p>`;
+    return;
+  }
+  const pf = (front / total) * 100;
+  const alavanca = front > 0 ? back / front : null;
+  box.innerHTML = `<div class="massabar">
+      <div class="mf" style="width:${pf.toFixed(1)}%" title="Front-end ${fmtBRL(front)}"></div>
+      <div class="mb" style="width:${(100 - pf).toFixed(1)}%" title="Back-end ${fmtBRL(back)}"></div>
+    </div>
+    <div class="massaleg">
+      <span><i class="mf"></i> Front-end <b>${fmtBRL(front)}</b> · ${nf0.format(pf)}%</span>
+      <span><i class="mb"></i> Back-end <b>${fmtBRL(back)}</b> · ${nf0.format(100 - pf)}%</span>
+    </div>
+    <p class="chartfoot">${alavanca == null || alavanca === 0
+      ? 'Sua oferta vive só do front-end: todo o lucro precisa nascer da primeira venda, e isso limita o quanto o clique pode custar.'
+      : `Cada R$ 1 de front-end traz <b class="up">${fmtBRL(alavanca)}</b> de back-end. É essa alavanca que permite pagar mais caro pelo clique do que o concorrente.`}</p>`;
+}
+
+/* ---------------------------------------------------------------
+   RETENÇÃO DA LUZ — hook rate (3s) vs retenção, por criativo.
+   Um prende; o outro segura. São problemas diferentes.
+--------------------------------------------------------------- */
+function renderRetencao() {
+  const box = $('boxRetencao');
+  if (!box) return;
+  const dados = adNames().map(n => {
+    const dias = adRows.filter(a => a.anuncio === n);
+    const hooks = dias.map(a => a.hook_rate).filter(v => v != null);
+    const rets = dias.map(a => a.retencao_video).filter(v => v != null);
+    if (!hooks.length && !rets.length) return null;
+    return { n, hook: hooks.length ? avg(hooks) : null, ret: rets.length ? avg(rets) : null };
+  }).filter(Boolean).sort((a, b) => num(b.hook) - num(a.hook));
+
+  if (!dados.length) {
+    destroyChart('chRetencao');
+    box.style.height = '';          // um render anterior pode ter deixado altura inline
+    box.classList.add('chartwait');
+    box.innerHTML = `<div class="accretion sm" style="opacity:.32"></div>
+      <span>Preencha <b>Hook Rate 3s</b> e <b>Retenção de vídeo</b> ao lançar o criativo.<br>
+      Um mede se a abertura prende; o outro, se o meio segura.</span>`;
+    $('retencaoFoot').textContent = '';
+    return;
+  }
+  restaurarCanvas('boxRetencao', 'chRetencao');
+  box.style.height = Math.max(160, dados.length * 42 + 40) + 'px';
+
+  makeChart('chRetencao', {
+    type: 'bar',
+    data: {
+      labels: dados.map(d => d.n),
+      datasets: [
+        { label: 'Hook rate 3s', data: dados.map(d => d.hook), backgroundColor: SERIES[0], borderRadius: 3, maxBarThickness: 14 },
+        { label: 'Retenção', data: dados.map(d => d.ret), backgroundColor: SERIES[3], borderRadius: 3, maxBarThickness: 14 },
+      ],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8, color: C.text2 } },
+        tooltip: {
+          backgroundColor: C.card2, borderColor: 'rgba(255,255,255,0.14)', borderWidth: 1,
+          titleColor: C.text, bodyColor: C.text2, padding: 10, cornerRadius: 8,
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.x == null ? '—' : fmtPct(ctx.parsed.x)}` },
+        },
+      },
+      scales: {
+        x: { beginAtZero: true, grid: { color: C.grid }, border: { display: false }, ticks: { maxTicksLimit: 5, callback: v => nf0.format(v) + '%' } },
+        y: { grid: { display: false }, border: { display: false }, ticks: { color: C.text2, font: { weight: '600' } } },
+      },
+    },
+  });
+
+  const prendeLarga = dados.filter(d => d.hook != null && d.ret != null && d.hook >= 30 && d.ret < 20).map(d => d.n);
+  const naoPrende = dados.filter(d => d.hook != null && d.hook < 20).map(d => d.n);
+  const notas = [];
+  if (prendeLarga.length) notas.push(`<b>${prendeLarga.join(', ')}</b>: a abertura prende e o meio larga. O problema está depois dos 3 segundos, não na thumb.`);
+  if (naoPrende.length) notas.push(`<b>${naoPrende.join(', ')}</b>: hook abaixo de 20% — ninguém passa dos 3 primeiros segundos. Troque a abertura antes de mexer no resto.`);
+  $('retencaoFoot').innerHTML = notas.length ? notas.join(' ') : 'Hook rate mede se a abertura prende. Retenção mede se o meio segura. Só o segundo se conserta reescrevendo o vídeo.';
+}
+
+/* =================================================================
+   ⌘K — a paleta de comandos. É o que separa "site" de "aplicativo"
+   para quem usa teclado o dia inteiro.
+================================================================= */
+function comandos() {
+  return [
+    ...ABAS.map(a => ({ ico: a.ico, t: a.label, sub: 'Ir para', run: () => trocarAba(a.id) })),
+    { ico: '＋', t: 'Lançar dia', sub: 'Formulário', run: () => abrirFormDia() },
+    { ico: '＋', t: 'Lançar anúncio', sub: 'Formulário', run: () => abrirFormAnuncio() },
+    { ico: '⎘', t: 'Colar do Meta', sub: 'Preenche o dia', run: () => { trocarAba('geral'); $('formCardGeral').open = true; abrirColar('dia'); } },
+    { ico: '⎘', t: 'Colar criativos do Meta', sub: 'Lança em lote', run: () => { trocarAba('anuncios'); $('formCardAds').open = true; abrirColar('ad'); } },
+    { ico: '☾', t: 'Configurar a economia', sub: 'Conta', run: () => acao('economia') },
+    { ico: '⬇', t: 'Exportar dias (CSV)', sub: 'Geral', run: exportCsvGeral },
+    { ico: '⬇', t: 'Exportar anúncios (CSV)', sub: 'Anúncios', run: exportCsvAds },
+    ...adNames().map(n => ({ ico: '◉', t: `Analisar ${n}`, sub: 'Anúncio', run: () => irParaAnalise(n) })),
+  ];
+}
+
+function abrirComandos() {
+  const todos = comandos();
+  let vis = todos, sel = 0;
+
+  const host = abrirSheet(`
+    <input type="text" id="cmdBusca" placeholder="Buscar comando…" autocomplete="off" spellcheck="false">
+    <ul class="cmdlist" id="cmdList"></ul>
+    <p class="chartfoot" style="margin:10px 0 0">↑↓ para navegar · Enter para executar · Esc para fechar</p>`, false, 'cmdk');
+
+  const fim = () => { document.removeEventListener('keydown', onKey); fecharSheet(host); };
+  const onKey = e => { if (e.key === 'Escape' && noTopo(host)) fim(); };
+  host.addEventListener('click', e => { if (e.target === host) fim(); });
+  document.addEventListener('keydown', onKey);
+
+  const pinta = () => {
+    $('cmdList').innerHTML = vis.length
+      ? vis.map((c, i) => `<li class="${i === sel ? 'on' : ''}" data-i="${i}">
+          <span class="cmdico">${c.ico}</span>
+          <span class="cmdt">${esc(c.t)}</span>
+          <span class="cmdsub">${esc(c.sub)}</span></li>`).join('')
+      : `<li class="cmdvazio">Nenhum comando encontrado.</li>`;
+    $('cmdList').querySelector('li.on')?.scrollIntoView({ block: 'nearest' });
+    $('cmdList').querySelectorAll('li[data-i]').forEach(li =>
+      li.addEventListener('click', () => executar(vis[Number(li.dataset.i)])));
+  };
+  const executar = c => { if (!c) return; fim(); c.run(); };
+
+  const busca = $('cmdBusca');
+  busca.addEventListener('input', () => {
+    const q = normHead(busca.value);
+    vis = q ? todos.filter(c => normHead(c.t + ' ' + c.sub).includes(q)) : todos;
+    sel = 0;
+    pinta();
+  });
+  busca.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, vis.length - 1); pinta(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); pinta(); }
+    else if (e.key === 'Enter') { e.preventDefault(); executar(vis[sel]); }
+  });
+  pinta();
 }
 
 /* =================================================================
@@ -1863,7 +2180,11 @@ function renderAll() {
     renderVeredito();
     renderCascata();
     renderCharts();
+    renderPressao();
     renderFunil();
+    renderFuga();
+    renderMassa();
+    renderConstelacao();
     renderTableGeral();
   }
   renderAdDatalist();
@@ -1871,6 +2192,7 @@ function renderAll() {
     renderRanking();
     renderAnalise();
     renderCompare();
+    renderRetencao();
     renderAdsHist();
   }
   if (abaAtiva === 'diario') renderDiario();
@@ -1923,10 +2245,10 @@ function abrirFormAnuncio(dataISO) {
    MODAIS PRÓPRIOS — o confirm()/prompt() nativo mostra "github.io diz…"
    e é o maior sinal de que aquilo é "um site", não um app.
 ================================================================= */
-function abrirSheet(html, largo) {
+function abrirSheet(html, largo, extra) {
   const host = document.createElement('div');
-  host.className = 'modal';
-  host.innerHTML = `<div class="sheet${largo ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div>`;
+  host.className = 'modal' + (extra ? ' ' + extra : '');
+  host.innerHTML = `<div class="sheet${largo ? ' wide' : ''}${extra ? ' ' + extra : ''}" role="dialog" aria-modal="true">${html}</div>`;
   $('sheetHost').appendChild(host);
   const foco = host.querySelector('textarea, input, button');
   setTimeout(() => foco?.focus(), 60);
@@ -3250,6 +3572,14 @@ async function iniciar() {
     if (b) irParaAnalise(b.dataset.anaHoje);
   });
 
+  /* ⌘K / Ctrl+K — só com o app aberto e sem outra paleta em cima */
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return;
+    if ($('app').classList.contains('hidden') || $('sheetHost').querySelector('.cmdk')) return;
+    e.preventDefault();
+    abrirComandos();
+  });
+
   /* configurações (agora dentro da tela Conta) */
   for (const id of ['s_taxa', 's_imposto', 's_margem']) $(id).addEventListener('input', ecoPreviewText);
   $('btnSaveSettings').addEventListener('click', async () => {
@@ -3272,6 +3602,7 @@ async function iniciar() {
     renderAll();
   });
   $('btnRefazerOnboard').addEventListener('click', abrirOnboard);
+  $('btnComandos').addEventListener('click', abrirComandos);
   ligarInstalacao();
 
   /* auth */

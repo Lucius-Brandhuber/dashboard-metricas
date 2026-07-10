@@ -20,7 +20,7 @@
 <!-- ?v= é obrigatório: o GitHub Pages serve tudo com max-age=600 e o navegador
      reusa subrecurso sem revalidar. Sem isto, um index.html novo pode carregar
      um app.js velho — e o app.js velho morre procurando elementos que sumiram. -->
-<link rel="stylesheet" href="css/style.css?v=2">
+<link rel="stylesheet" href="css/style.css?v=3">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
 </head>
@@ -220,6 +220,12 @@
       <section class="block">
         <div class="blockhead"><h2>Tráfego</h2><span class="blocksub" id="trafSub"></span></div>
         <div class="kpis kpis-4 traf" id="kpiTrafego"></div>
+
+        <div class="plate chartcard">
+          <h3>Pressão do leilão <span class="sub">· desvio da própria média dos dias anteriores</span></h3>
+          <div id="boxPressao" class="chartbox"><canvas id="chPressao"></canvas></div>
+          <p class="chartfoot" id="pressaoFoot"></p>
+        </div>
       </section>
 
       <section class="block">
@@ -241,6 +247,36 @@
           </div>
         </div>
       </section>
+
+      <section class="block">
+        <div class="blockhead">
+          <h2>Economia da oferta</h2>
+          <span class="blocksub">o que escapa depois de entrar — e o que sustenta o preço do clique</span>
+        </div>
+        <div class="funilgrid">
+          <div class="plate">
+            <h3>Fuga gravitacional <span class="sub">· entrou e voltou</span></h3>
+            <div id="fugaBody"></div>
+          </div>
+          <div class="plate">
+            <h3>Massa da oferta <span class="sub">· front-end vs back-end</span></h3>
+            <div id="massaBody"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="plate">
+        <div class="cardhead"><h3>Constelação de dias <span class="sub">· 12 semanas de lucro</span></h3></div>
+        <div class="constgrid" id="constGrid"></div>
+        <div class="constleg">
+          <span>prejuízo</span>
+          <i class="bad n3"></i><i class="bad n2"></i><i class="bad n1"></i>
+          <i class="nada"></i>
+          <i class="good n1"></i><i class="good n2"></i><i class="good n3"></i>
+          <span>lucro</span>
+        </div>
+        <p class="chartfoot" id="constFoot"></p>
+      </div>
 
       <div class="plate">
         <div class="cardhead"><h3>Todos os dias <span class="sub">· toque numa linha para ver os anúncios do dia</span></h3></div>
@@ -372,6 +408,12 @@
         <div class="chartbox tall"><canvas id="chCompare"></canvas></div>
       </div>
 
+      <div class="plate chartcard">
+        <h3>Retenção da luz <span class="sub">· um prende, o outro segura</span></h3>
+        <div id="boxRetencao" class="chartbox"><canvas id="chRetencao"></canvas></div>
+        <p class="chartfoot" id="retencaoFoot"></p>
+      </div>
+
       <div class="plate">
         <div class="cardhead">
           <h3>Histórico por dia</h3>
@@ -440,8 +482,10 @@
       <div class="plate" id="cardInstalar">
         <h4 class="modalsec">Aplicativo</h4>
         <p class="loginsub" style="text-align:left" id="instalarTxt">Instale o Ergosphere na tela de início e abra direto do ícone, em tela cheia.</p>
+        <p class="loginsub" style="text-align:left">No computador, <kbd>⌘K</kbd> (ou <kbd>Ctrl</kbd>+<kbd>K</kbd>) abre a busca de comandos: pular entre telas, lançar um dia, colar do Meta ou analisar um criativo sem tirar a mão do teclado.</p>
         <div class="formactions">
           <button class="btn ghost" id="btnInstalar">Instalar Ergosphere</button>
+          <button class="btn ghost" id="btnComandos">⌘K Buscar comando</button>
           <button class="btn ghost" id="btnRefazerOnboard">Refazer a introdução</button>
         </div>
       </div>
@@ -480,6 +524,6 @@
 
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
-<script src="js/app.js?v=2"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>
