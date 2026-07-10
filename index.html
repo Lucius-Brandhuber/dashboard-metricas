@@ -78,6 +78,68 @@
         <button class="btn ghost small" id="btnCsvGeral">⬇ CSV</button>
       </div>
 
+      <!-- ---------- 0. Lançar dia ---------- -->
+      <details class="card formcard" id="formCardGeral">
+        <summary><span class="plus">＋</span> Lançar dia <span class="editing-tag hidden" id="editTagGeral">editando</span></summary>
+        <form id="formGeral" class="metform">
+
+          <div class="fgrid">
+            <label>Data<input type="date" id="f_data" required></label>
+            <label>Gasto (R$)<input type="text" id="f_gasto" inputmode="decimal" placeholder="0,00"></label>
+            <label>Faturamento bruto (R$)<input type="text" id="f_faturado" inputmode="decimal" placeholder="0,00"></label>
+            <label>Compras<input type="text" id="f_compra" inputmode="numeric" placeholder="0"></label>
+          </div>
+
+          <div class="formrow">
+            <button type="button" class="btn ghost small" id="btnSomarAds">Σ Somar dos anúncios</button>
+            <span class="formhint inline" id="previewDia"></span>
+          </div>
+
+          <details class="fgroup">
+            <summary>Funil do Meta</summary>
+            <div class="fgrid">
+              <label>Cliques<input type="text" id="f_cliques" inputmode="numeric" placeholder="0"></label>
+              <label>Visualizações de página<input type="text" id="f_visualizacao" inputmode="numeric" placeholder="0"></label>
+              <label>Checkouts iniciados (IC)<input type="text" id="f_finalizacao" inputmode="numeric" placeholder="0"></label>
+              <label>CPM (R$)<input type="text" id="f_cpm" inputmode="decimal" placeholder="0,00"></label>
+              <label>CPC (R$)<input type="text" id="f_cpc" inputmode="decimal" placeholder="0,00"></label>
+              <label>Perda de tráfego (%)<input type="text" id="f_perda" inputmode="decimal" placeholder="auto"></label>
+            </div>
+          </details>
+
+          <details class="fgroup">
+            <summary>Checkout &amp; financeiro <span class="fgrouphint">preencha só quando houver</span></summary>
+            <div class="fgrid">
+              <label>Vendas iniciadas<input type="text" id="f_iniciadas" inputmode="numeric" placeholder="0"></label>
+              <label>Faturamento líquido (R$)<input type="text" id="f_liquido" inputmode="decimal" placeholder="auto"></label>
+              <label>Despesas adicionais (R$)<input type="text" id="f_despesas" inputmode="decimal" placeholder="0,00"></label>
+              <label>Reembolsos (R$)<input type="text" id="f_reembolso" inputmode="decimal" placeholder="0,00"></label>
+              <label>Chargeback (R$)<input type="text" id="f_chargeback" inputmode="decimal" placeholder="0,00"></label>
+              <label>Vendas pendentes (R$)<input type="text" id="f_pendentes" inputmode="decimal" placeholder="0,00"></label>
+            </div>
+          </details>
+
+          <details class="fgroup">
+            <summary>Mix de oferta e overrides</summary>
+            <div class="fgrid">
+              <label>Compras front-end (R$)<input type="text" id="f_frontend" inputmode="decimal" placeholder="0,00"></label>
+              <label>Compras back-end (R$)<input type="text" id="f_backend" inputmode="decimal" placeholder="0,00"></label>
+              <label>Taxa conv. checkout (%)<input type="text" id="f_taxa" inputmode="decimal" placeholder="auto"></label>
+              <label>ROAS<input type="text" id="f_roi" inputmode="decimal" placeholder="auto"></label>
+            </div>
+          </details>
+
+          <div class="fgrid">
+            <label class="wide">Observações <span class="fgrouphint">vira anotação nos gráficos: “troquei o criativo”</span><input type="text" id="f_obs" placeholder="opcional"></label>
+          </div>
+
+          <div class="formactions">
+            <button type="submit" class="btn primary" id="btnSalvarGeral">Salvar dia</button>
+            <button type="button" class="btn ghost hidden" id="btnCancelGeral">Cancelar edição</button>
+          </div>
+        </form>
+      </details>
+
       <!-- ---------- 1. Resultado do negócio ---------- -->
       <section class="block">
         <div class="blockhead">
@@ -147,69 +209,7 @@
         </div>
       </section>
 
-      <!-- ---------- 4. Lançar dia ---------- -->
-      <details class="card formcard" id="formCardGeral">
-        <summary><span class="plus">＋</span> Lançar dia <span class="editing-tag hidden" id="editTagGeral">editando</span></summary>
-        <form id="formGeral" class="metform">
-
-          <div class="fgrid">
-            <label>Data<input type="date" id="f_data" required></label>
-            <label>Gasto (R$)<input type="text" id="f_gasto" inputmode="decimal" placeholder="0,00"></label>
-            <label>Faturamento bruto (R$)<input type="text" id="f_faturado" inputmode="decimal" placeholder="0,00"></label>
-            <label>Compras<input type="text" id="f_compra" inputmode="numeric" placeholder="0"></label>
-          </div>
-
-          <div class="formrow">
-            <button type="button" class="btn ghost small" id="btnSomarAds">Σ Somar dos anúncios</button>
-            <span class="formhint inline" id="previewDia"></span>
-          </div>
-
-          <details class="fgroup">
-            <summary>Funil do Meta</summary>
-            <div class="fgrid">
-              <label>Cliques<input type="text" id="f_cliques" inputmode="numeric" placeholder="0"></label>
-              <label>Visualizações de página<input type="text" id="f_visualizacao" inputmode="numeric" placeholder="0"></label>
-              <label>Checkouts iniciados (IC)<input type="text" id="f_finalizacao" inputmode="numeric" placeholder="0"></label>
-              <label>CPM (R$)<input type="text" id="f_cpm" inputmode="decimal" placeholder="0,00"></label>
-              <label>CPC (R$)<input type="text" id="f_cpc" inputmode="decimal" placeholder="0,00"></label>
-              <label>Perda de tráfego (%)<input type="text" id="f_perda" inputmode="decimal" placeholder="auto"></label>
-            </div>
-          </details>
-
-          <details class="fgroup">
-            <summary>Checkout &amp; financeiro <span class="fgrouphint">preencha só quando houver</span></summary>
-            <div class="fgrid">
-              <label>Vendas iniciadas<input type="text" id="f_iniciadas" inputmode="numeric" placeholder="0"></label>
-              <label>Faturamento líquido (R$)<input type="text" id="f_liquido" inputmode="decimal" placeholder="auto"></label>
-              <label>Despesas adicionais (R$)<input type="text" id="f_despesas" inputmode="decimal" placeholder="0,00"></label>
-              <label>Reembolsos (R$)<input type="text" id="f_reembolso" inputmode="decimal" placeholder="0,00"></label>
-              <label>Chargeback (R$)<input type="text" id="f_chargeback" inputmode="decimal" placeholder="0,00"></label>
-              <label>Vendas pendentes (R$)<input type="text" id="f_pendentes" inputmode="decimal" placeholder="0,00"></label>
-            </div>
-          </details>
-
-          <details class="fgroup">
-            <summary>Mix de oferta e overrides</summary>
-            <div class="fgrid">
-              <label>Compras front-end (R$)<input type="text" id="f_frontend" inputmode="decimal" placeholder="0,00"></label>
-              <label>Compras back-end (R$)<input type="text" id="f_backend" inputmode="decimal" placeholder="0,00"></label>
-              <label>Taxa conv. checkout (%)<input type="text" id="f_taxa" inputmode="decimal" placeholder="auto"></label>
-              <label>ROAS<input type="text" id="f_roi" inputmode="decimal" placeholder="auto"></label>
-            </div>
-          </details>
-
-          <div class="fgrid">
-            <label class="wide">Observações <span class="fgrouphint">vira anotação nos gráficos: “troquei o criativo”</span><input type="text" id="f_obs" placeholder="opcional"></label>
-          </div>
-
-          <div class="formactions">
-            <button type="submit" class="btn primary" id="btnSalvarGeral">Salvar dia</button>
-            <button type="button" class="btn ghost hidden" id="btnCancelGeral">Cancelar edição</button>
-          </div>
-        </form>
-      </details>
-
-      <!-- ---------- 5. Tabela de dias ---------- -->
+      <!-- ---------- 4. Tabela de dias ---------- -->
       <div class="card">
         <div class="cardhead"><h3>Todos os dias <span class="sub">· clique numa linha para ver os anúncios do dia</span></h3></div>
         <div class="tablewrap"><table id="tblGeral"></table></div>
